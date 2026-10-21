@@ -1,4 +1,5 @@
 import { calculatePaymentTotal, validatePaymentCart } from "@/lib/payments";
+import { resolveInventoryCart } from "@/lib/resolve-inventory-cart";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 export async function POST(request: Request) {
@@ -10,18 +11,18 @@ export async function POST(request: Request) {
   }
 
   const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
-  const cart = validatePaymentCart(record.cart);
+  const validatedCart = validatePaymentCart(record.cart);
   const cardId =
     typeof record.cardId === "string" ? record.cardId.trim().toUpperCase() : "";
 
-  if (!cart) {
+  if (!validatedCart) {
     return Response.json(
       { message: "Your cart contains invalid items. Please review it and try again." },
       { status: 400 }
     );
   }
   if (
-    cart.some(
+    validatedCart.some(
       (item) =>
         item.type === "court" &&
         (!item.date || !item.startTime || !item.endTime)
@@ -37,6 +38,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    const inventoryResult = await resolveInventoryCart(validatedCart);
+    if (!inventoryResult.items) {
+      return Response.json(
+        { message: inventoryResult.message },
+        { status: 409 }
+      );
+    }
+    const cart = inventoryResult.items;
     const supabase = createSupabaseServiceClient();
     const { data, error } = await supabase.rpc("charge_membership_card", {
       p_card_id: cardId,

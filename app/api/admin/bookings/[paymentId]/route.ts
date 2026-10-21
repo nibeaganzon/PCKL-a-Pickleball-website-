@@ -37,7 +37,7 @@ export async function PATCH(
 
     const input = body as Record<string, unknown>;
     const itemIndex = input.itemIndex;
-    const item = normalizeBookingItem(input.item, true);
+    const item = await normalizeBookingItem(input.item, true);
     if (
       typeof itemIndex !== "number" ||
       !Number.isInteger(itemIndex) ||

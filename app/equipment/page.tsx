@@ -6,78 +6,37 @@ import Link from "next/link";
 import CurrentYear from "../current-year";
 import CartIndicator from "@/components/cart-indicator";
 import { readCart, writeCart } from "@/lib/cart";
-
-type Equipment = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  unit: string;
-  image: string;
-  stock: number;
-};
-
-const equipment: Equipment[] = [
-  {
-    id: "paddle",
-    name: "Pickleball Paddle",
-    description:
-      "A paddle for practice sessions, casual rallies, and competitive games.",
-    price: 50,
-    unit: "per paddle / hour",
-    image:
-      "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
-    stock: 20,
-  },
-  {
-    id: "ball",
-    name: "Pickleball Ball",
-    description:
-      "Rent pickleball balls for your session and return them after playing.",
-    price: 10,
-    unit: "per ball / hour",
-    image:
-      "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
-    stock: 20,
-  },
-];
+import { useInventory } from "@/lib/use-inventory";
+import type { EquipmentInventoryItem } from "@/lib/inventory";
 
 export default function EquipmentPage() {
-  const [hours, setHours] = useState<Record<string, number>>({
-    paddle: 1,
-    ball: 1,
-  });
-
-  const [quantities, setQuantities] = useState<Record<string, number>>({
-    paddle: 1,
-    ball: 1,
-  });
-
-  const [remainingStock, setRemainingStock] = useState<Record<string, number>>(
-    { paddle: 20, ball: 20 }
-  );
+  const { equipment, loading, error } = useInventory();
+  const [hours, setHours] = useState<Record<string, number>>({});
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [remainingStock, setRemainingStock] = useState<Record<string, number>>({});
   const [cartReady, setCartReady] = useState(false);
   const [message, setMessage] = useState("");
-  const [addedItem, setAddedItem] = useState<Equipment | null>(null);
+  const [addedItem, setAddedItem] =
+    useState<EquipmentInventoryItem | null>(null);
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
       try {
         const cart = readCart();
-        setRemainingStock(
-          Object.fromEntries(
-            equipment.map((item) => [
-              item.id,
-              Math.max(
-                0,
-                item.stock -
-                  cart
-                    .filter((cartItem) => cartItem.id === item.id)
-                    .reduce((total, cartItem) => total + cartItem.quantity, 0)
-              ),
-            ])
-          )
-        );
+        setRemainingStock(Object.fromEntries(equipment.map((item) => [
+          item.id,
+          Math.max(
+            0,
+            item.quantity -
+              cart
+                .filter(
+                  (cartItem) =>
+                    cartItem.id === item.id ||
+                    cartItem.name.toLowerCase() === item.name.toLowerCase()
+                )
+                .reduce((total, cartItem) => total + cartItem.quantity, 0)
+          ),
+        ])));
         setCartReady(true);
       } catch {
         setMessage("Unable to load your cart. Please refresh and try again.");
@@ -85,9 +44,9 @@ export default function EquipmentPage() {
     }, 0);
 
     return () => window.clearTimeout(loadTimer);
-  }, []);
+  }, [equipment]);
 
-  function addToCart(item: Equipment, requestedQuantity: number) {
+  function addToCart(item: EquipmentInventoryItem, requestedQuantity: number) {
     if (!cartReady) {
       return;
     }
@@ -107,10 +66,12 @@ export default function EquipmentPage() {
       const currentQuantity = cart
         .filter(
           (cartItem) =>
-            cartItem.type === "equipment" && cartItem.id === item.id
+            cartItem.type === "equipment" &&
+            (cartItem.id === item.id ||
+              cartItem.name.toLowerCase() === item.name.toLowerCase())
         )
         .reduce((total, cartItem) => total + cartItem.quantity, 0);
-      const available = Math.max(0, item.stock - currentQuantity);
+      const available = Math.max(0, item.quantity - currentQuantity);
 
       if (newItem.quantity > available) {
         setRemainingStock((current) => ({
@@ -212,11 +173,11 @@ export default function EquipmentPage() {
 
       <section className="equipment-info-strip">
         <div>
-          <strong>₱50</strong>
+          <strong>₱{equipment.find((item) => item.name.toLowerCase().includes("paddle"))?.price ?? "—"}</strong>
           <span>Paddle rental / hour</span>
         </div>
         <div>
-          <strong>₱10</strong>
+          <strong>₱{equipment.find((item) => item.name.toLowerCase().includes("ball"))?.price ?? "—"}</strong>
           <span>Ball rental / hour</span>
         </div>
         <div>
@@ -251,10 +212,16 @@ export default function EquipmentPage() {
           </div>
         )}
 
+        {error && <div className="equipment-message" role="alert">{error}</div>}
+        {loading && <p role="status">Loading rental equipment...</p>}
+        {!loading && !error && equipment.length === 0 && (
+          <p>No rental equipment is available right now.</p>
+        )}
+
         <div className="equipment-grid">
           {equipment.map((item) => {
             const itemHours = hours[item.id] ?? 1;
-            const available = remainingStock[item.id] ?? item.stock;
+            const available = remainingStock[item.id] ?? item.quantity;
             const itemQuantity = Math.min(
               quantities[item.id] ?? 1,
               Math.max(available, 1)
@@ -281,7 +248,7 @@ export default function EquipmentPage() {
 
                   <div className="equipment-price">
                     <strong>₱{item.price}</strong>
-                    <span>{item.unit}</span>
+                    <span>per item / hour</span>
                   </div>
                   <p
                     className={`equipment-stock ${
@@ -291,7 +258,7 @@ export default function EquipmentPage() {
                   >
                     {available === 0
                       ? "Out of stock"
-                      : `${available} of ${item.stock} available`}
+                      : `${available} of ${item.quantity} available`}
                   </p>
 
                   <div className="equipment-options">
@@ -367,9 +334,8 @@ export default function EquipmentPage() {
         <div className="equipment-checkout-note">
           <span className="equipment-note-icon">i</span>
           <p>
-            We have 20 paddles and 20 balls available to rent. Stock is
-            limited to 20 of each type per cart. Once all 20 are added,
-            additional units cannot be added.
+            Rental quantities and prices reflect current inventory. Your cart
+            cannot exceed the available stock for each item.
           </p>
         </div>
       </section>

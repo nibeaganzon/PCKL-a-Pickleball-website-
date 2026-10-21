@@ -918,6 +918,129 @@
   cursor: not-allowed;
 }
 
+/* Inventory management */
+
+.admin-inventory-panel {
+  margin-top: 22px;
+  padding: 22px 24px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--pckl-white);
+}
+
+.admin-inventory-panel > .admin-section-heading {
+  margin-bottom: 18px;
+}
+
+.admin-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-inventory-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 15px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+}
+
+.admin-inventory-card h3 {
+  margin: 5px 0;
+  color: var(--pckl-navy);
+  font-size: 12px;
+}
+
+.admin-inventory-card p {
+  margin: 0 0 8px;
+  color: var(--admin-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.admin-inventory-card > div:first-child > strong {
+  color: var(--pckl-navy);
+  font-size: 10px;
+}
+
+.admin-inventory-kind {
+  color: #788600;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.admin-inventory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.admin-inventory-form-heading,
+.admin-inventory-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-inventory-form-heading h3 {
+  margin: 0;
+  color: var(--pckl-navy);
+  font-family: "Space Grotesk", Arial, sans-serif;
+  font-size: 14px;
+}
+
+.admin-inventory-form > label,
+.admin-inventory-form-grid > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--admin-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-inventory-form input,
+.admin-inventory-form select,
+.admin-inventory-form textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  background: var(--pckl-white);
+  color: var(--admin-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.admin-inventory-form textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.admin-inventory-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.admin-inventory-form-actions {
+  justify-content: flex-end;
+}
+
 /* Activity */
 
 .admin-activity-panel {
@@ -1475,6 +1598,19 @@
 
   .admin-modal-header {
     padding: 18px;
+  }
+
+  .admin-inventory-panel {
+    padding: 18px;
+  }
+
+  .admin-inventory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-inventory-panel > .admin-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

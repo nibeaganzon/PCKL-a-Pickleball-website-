@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PaymentItem, PaymentRecord, PaymentStatus } from "@/lib/payments";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useInventory } from "@/lib/use-inventory";
+import type { InventoryItem } from "@/lib/inventory";
 
 type Activity = {
   id: string;
@@ -29,13 +31,25 @@ type BookingRecord = {
 type BookingDraft = {
   paymentId: string;
   type: "court" | "equipment";
-  courtName: string;
-  equipmentId: "paddle" | "ball";
+  courtId: string;
+  equipmentId: string;
   date: string;
   startTime: string;
   durationHours: number;
   quantity: number;
   minimumDate: string;
+};
+
+type InventoryDraft = {
+  id?: string;
+  kind: "court" | "equipment";
+  name: string;
+  description: string;
+  price: string;
+  quantity: string;
+  courtType: "Indoor" | "Outdoor";
+  status: "Available" | "Booked" | "Maintenance";
+  image: string;
 };
 
 function formatPeso(amount: number) {
@@ -74,6 +88,13 @@ function describeItems(items: PaymentItem[]) {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const {
+    courts: inventoryCourts,
+    equipment: inventoryEquipment,
+    loading: loadingInventory,
+    error: inventoryError,
+    refresh: refreshInventory,
+  } = useInventory();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [adminEmail, setAdminEmail] = useState("");
   const [loading, setLoading] = useState(true);
@@ -94,6 +115,9 @@ export default function AdminDashboardPage() {
   const [editingBooking, setEditingBooking] =
     useState<BookingRecord | null>(null);
   const [savingBooking, setSavingBooking] = useState(false);
+  const [inventoryDraft, setInventoryDraft] =
+    useState<InventoryDraft | null>(null);
+  const [savingInventory, setSavingInventory] = useState(false);
 
   const loadPayments = useCallback(async () => {
     try {
@@ -275,14 +299,29 @@ export default function AdminDashboardPage() {
     );
     const minimumDate = `${nextStart.year}-${nextStart.month}-${nextStart.day}`;
     const defaultStartTime = `${nextStart.hour}:${nextStart.minute}`;
+    const defaultCourt =
+      inventoryCourts.find((court) => court.status === "Available") ??
+      inventoryCourts[0];
+    const defaultEquipment = inventoryEquipment[0];
+    const selectedCourt =
+      booking?.item.type === "court"
+        ? inventoryCourts.find(
+            (court) =>
+              court.id === booking.item.id || court.name === booking.item.name
+          )
+        : undefined;
+    const selectedEquipment =
+      booking?.item.type === "equipment"
+        ? inventoryEquipment.find(
+            (item) =>
+              item.id === booking.item.id || item.name === booking.item.name
+          )
+        : undefined;
     setBookingDraft({
       paymentId: booking?.paymentId ?? firstPendingOrder?.id ?? "",
       type: booking?.item.type ?? "court",
-      courtName: booking?.item.name ?? "Court 01",
-      equipmentId:
-        booking?.item.type === "equipment" && booking.item.id === "ball"
-          ? "ball"
-          : "paddle",
+      courtId: selectedCourt?.id ?? defaultCourt?.id ?? "",
+      equipmentId: selectedEquipment?.id ?? defaultEquipment?.id ?? "",
       date: booking?.item.date ?? minimumDate,
       startTime: booking?.item.startTime ?? defaultStartTime,
       durationHours: booking?.item.durationHours ?? 1,
@@ -302,29 +341,58 @@ export default function AdminDashboardPage() {
     event.preventDefault();
     if (!bookingDraft) return;
 
-    const item: PaymentItem =
-      bookingDraft.type === "court"
-        ? {
-            id: `court-${bookingDraft.courtName.slice(-2)}`,
-            type: "court",
-            name: bookingDraft.courtName,
-            date: bookingDraft.date,
-            startTime: bookingDraft.startTime,
-            durationHours: bookingDraft.durationHours,
-            quantity: 1,
-            unitPrice: 0,
-          }
-        : {
-            id: bookingDraft.equipmentId,
-            type: "equipment",
-            name:
-              bookingDraft.equipmentId === "paddle"
-                ? "Pickleball Paddle"
-                : "Pickleball Ball",
-            durationHours: bookingDraft.durationHours,
-            quantity: bookingDraft.quantity,
-            unitPrice: 0,
-          };
+    const selectedCourt = inventoryCourts.find(
+      (court) => court.id === bookingDraft.courtId
+    );
+    const selectedEquipment = inventoryEquipment.find(
+      (item) => item.id === bookingDraft.equipmentId
+    );
+    if (
+      bookingDraft.type === "court" &&
+      selectedCourt?.status !== "Available" &&
+      selectedCourt?.name !== editingBooking?.item.name
+    ) {
+      setError("Choose a court that is currently available.");
+      return;
+    }
+    if (
+      bookingDraft.type === "equipment" &&
+      bookingDraft.quantity > (selectedEquipment?.quantity ?? 0)
+    ) {
+      setError("The requested rental quantity exceeds available inventory.");
+      return;
+    }
+
+    let item: PaymentItem;
+    if (bookingDraft.type === "court") {
+      if (!selectedCourt) {
+        setError("Choose an item that is still in inventory.");
+        return;
+      }
+      item = {
+        id: selectedCourt.id,
+        type: "court",
+        name: selectedCourt.name,
+        date: bookingDraft.date,
+        startTime: bookingDraft.startTime,
+        durationHours: bookingDraft.durationHours,
+        quantity: 1,
+        unitPrice: selectedCourt.price,
+      };
+    } else {
+      if (!selectedEquipment) {
+        setError("Choose an item that is still in inventory.");
+        return;
+      }
+      item = {
+        id: selectedEquipment.id,
+        type: "equipment",
+        name: selectedEquipment.name,
+        durationHours: bookingDraft.durationHours,
+        quantity: bookingDraft.quantity,
+        unitPrice: selectedEquipment.price,
+      };
+    }
 
     setSavingBooking(true);
     setError("");
@@ -390,6 +458,90 @@ export default function AdminDashboardPage() {
         deleteError instanceof Error
           ? deleteError.message
           : "The booking could not be deleted."
+      );
+    }
+  }
+
+  function openInventoryEditor(
+    item?: InventoryItem,
+    kind: "court" | "equipment" = "court"
+  ) {
+    setInventoryDraft({
+      id: item?.id,
+      kind: item?.kind ?? kind,
+      name: item?.name ?? "",
+      description: item?.description ?? "",
+      price: item ? String(item.price) : "",
+      quantity: item?.kind === "equipment" ? String(item.quantity) : "0",
+      courtType: item?.kind === "court" ? item.courtType : "Indoor",
+      status: item?.kind === "court" ? item.status : "Available",
+      image: item?.image ?? "",
+    });
+    setError("");
+  }
+
+  async function saveInventoryItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inventoryDraft) return;
+
+    const payload = {
+      ...inventoryDraft,
+      price: Number(inventoryDraft.price),
+      ...(inventoryDraft.kind === "equipment"
+        ? { quantity: Number(inventoryDraft.quantity) }
+        : {}),
+    };
+    setSavingInventory(true);
+    setError("");
+    try {
+      const response = await fetch(
+        inventoryDraft.id
+          ? `/api/admin/inventory/${inventoryDraft.id}`
+          : "/api/admin/inventory",
+        {
+          method: inventoryDraft.id ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "Inventory could not be saved.");
+      }
+      setNotice(result.message);
+      setInventoryDraft(null);
+      await refreshInventory();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Inventory could not be saved."
+      );
+    } finally {
+      setSavingInventory(false);
+    }
+  }
+
+  async function deleteInventoryItem(item: InventoryItem) {
+    if (!window.confirm(`Delete ${item.name} from inventory?`)) return;
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/inventory/${item.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: item.kind }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "Inventory item could not be deleted.");
+      }
+      setNotice(result.message);
+      await refreshInventory();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Inventory item could not be deleted."
       );
     }
   }
@@ -465,6 +617,13 @@ export default function AdminDashboardPage() {
             {bookings.length > 0 && (
               <span className="admin-side-count">{bookings.length}</span>
             )}
+          </a>
+          <a className="admin-side-link" href="#inventory">
+            <span className="admin-side-icon">▤</span>
+            Courts & rentals
+            <span className="admin-side-count">
+              {inventoryCourts.length + inventoryEquipment.length}
+            </span>
           </a>
           <a className="admin-side-link" href="#activity">
             <span className="admin-side-icon">◷</span>
@@ -811,6 +970,238 @@ export default function AdminDashboardPage() {
             </div>
           </section>
 
+          <section className="admin-inventory-panel" id="inventory">
+            <div className="admin-section-heading">
+              <div>
+                <h2>Courts & Rental Inventory</h2>
+                <p>
+                  Add, update, or remove the courts and equipment shown to
+                  customers on the booking and rental pages.
+                </p>
+              </div>
+              <div className="admin-queue-actions">
+                <button
+                  type="button"
+                  className="admin-proof-button"
+                  onClick={() => openInventoryEditor(undefined, "court")}
+                >
+                  Add court
+                </button>
+                <button
+                  type="button"
+                  className="admin-confirm-button"
+                  onClick={() => openInventoryEditor(undefined, "equipment")}
+                >
+                  Add rental item
+                </button>
+              </div>
+            </div>
+
+            {inventoryError && (
+              <div className="admin-error" role="alert">{inventoryError}</div>
+            )}
+            {loadingInventory && (
+              <p className="admin-empty-row">Loading inventory...</p>
+            )}
+
+            {inventoryDraft && (
+              <form
+                className="admin-inventory-form"
+                onSubmit={saveInventoryItem}
+              >
+                <div className="admin-inventory-form-heading">
+                  <h3>
+                    {inventoryDraft.id ? "Edit inventory item" : "Add inventory item"}
+                  </h3>
+                  <button
+                    type="button"
+                    className="admin-proof-button"
+                    onClick={() => setInventoryDraft(null)}
+                    disabled={savingInventory}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <label>
+                  Item type
+                  <select
+                    value={inventoryDraft.kind}
+                    disabled={Boolean(inventoryDraft.id)}
+                    onChange={(event) =>
+                      setInventoryDraft({
+                        ...inventoryDraft,
+                        kind: event.target.value as "court" | "equipment",
+                      })
+                    }
+                  >
+                    <option value="court">Court</option>
+                    <option value="equipment">Rental equipment</option>
+                  </select>
+                </label>
+                <div className="admin-inventory-form-grid">
+                  <label>
+                    Name
+                    <input
+                      required
+                      maxLength={100}
+                      value={inventoryDraft.name}
+                      onChange={(event) =>
+                        setInventoryDraft({
+                          ...inventoryDraft,
+                          name: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Price per hour
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={inventoryDraft.price}
+                      onChange={(event) =>
+                        setInventoryDraft({
+                          ...inventoryDraft,
+                          price: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                {inventoryDraft.kind === "court" ? (
+                  <div className="admin-inventory-form-grid">
+                    <label>
+                      Court type
+                      <select
+                        value={inventoryDraft.courtType}
+                        onChange={(event) =>
+                          setInventoryDraft({
+                            ...inventoryDraft,
+                            courtType: event.target.value as "Indoor" | "Outdoor",
+                          })
+                        }
+                      >
+                        <option value="Indoor">Indoor</option>
+                        <option value="Outdoor">Outdoor</option>
+                      </select>
+                    </label>
+                    <label>
+                      Status
+                      <select
+                        value={inventoryDraft.status}
+                        onChange={(event) =>
+                          setInventoryDraft({
+                            ...inventoryDraft,
+                            status: event.target.value as InventoryDraft["status"],
+                          })
+                        }
+                      >
+                        <option value="Available">Available</option>
+                        <option value="Booked">Booked</option>
+                        <option value="Maintenance">Maintenance</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : (
+                  <label>
+                    Stock quantity
+                    <input
+                      type="number"
+                      min="0"
+                      max="10000"
+                      step="1"
+                      required
+                      value={inventoryDraft.quantity}
+                      onChange={(event) =>
+                        setInventoryDraft({
+                          ...inventoryDraft,
+                          quantity: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+                <label>
+                  Description
+                  <textarea
+                    maxLength={1000}
+                    value={inventoryDraft.description}
+                    onChange={(event) =>
+                      setInventoryDraft({
+                        ...inventoryDraft,
+                        description: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Image URL
+                  <input
+                    type="url"
+                    value={inventoryDraft.image}
+                    onChange={(event) =>
+                      setInventoryDraft({
+                        ...inventoryDraft,
+                        image: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <div className="admin-inventory-form-actions">
+                  <button
+                    type="submit"
+                    className="admin-confirm-button"
+                    disabled={savingInventory}
+                  >
+                    {savingInventory ? "Saving..." : "Save inventory item"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="admin-inventory-grid">
+              {[...inventoryCourts, ...inventoryEquipment].map((item) => (
+                <article className="admin-inventory-card" key={`${item.kind}-${item.id}`}>
+                  <div>
+                    <span className="admin-inventory-kind">
+                      {item.kind === "court"
+                        ? `${item.courtType} court · ${item.status}`
+                        : `${item.quantity} in stock`}
+                    </span>
+                    <h3>{item.name}</h3>
+                    <p>{item.description || "No description provided."}</p>
+                    <strong>{formatPeso(item.price)} / hour</strong>
+                  </div>
+                  <div className="admin-booking-actions">
+                    <button
+                      type="button"
+                      className="admin-proof-button"
+                      onClick={() => openInventoryEditor(item)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-delete-button"
+                      onClick={() => void deleteInventoryItem(item)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!loadingInventory &&
+                !inventoryError &&
+                inventoryCourts.length + inventoryEquipment.length === 0 && (
+                <p className="admin-empty-row">
+                  No inventory found. Apply the inventory migration to initialize the existing 20 courts and rental items.
+                </p>
+              )}
+            </div>
+          </section>
+
           <section className="admin-activity-panel" id="activity">
             <div className="admin-section-heading">
               <div>
@@ -940,22 +1331,25 @@ export default function AdminDashboardPage() {
                   <label>
                     Court
                     <select
-                      value={bookingDraft.courtName}
+                      value={bookingDraft.courtId}
                       onChange={(event) =>
                         setBookingDraft({
                           ...bookingDraft,
-                          courtName: event.target.value,
+                          courtId: event.target.value,
                         })
                       }
                     >
-                      {Array.from({ length: 20 }, (_, index) => {
-                        const courtName = `Court ${String(index + 1).padStart(2, "0")}`;
-                        return (
-                          <option key={courtName} value={courtName}>
-                            {courtName}
+                      {inventoryCourts
+                        .filter(
+                          (court) =>
+                            court.status === "Available" ||
+                            court.id === bookingDraft.courtId
+                        )
+                        .map((court) => (
+                          <option key={court.id} value={court.id}>
+                            {court.name} · {court.courtType} · {formatPeso(court.price)}/hr
                           </option>
-                        );
-                      })}
+                        ))}
                     </select>
                   </label>
                   <div className="admin-booking-field-grid">
@@ -998,12 +1392,21 @@ export default function AdminDashboardPage() {
                     onChange={(event) =>
                       setBookingDraft({
                         ...bookingDraft,
-                        equipmentId: event.target.value as "paddle" | "ball",
+                        equipmentId: event.target.value,
                       })
                     }
                   >
-                    <option value="paddle">Pickleball Paddle</option>
-                    <option value="ball">Pickleball Ball</option>
+                    {inventoryEquipment
+                      .filter(
+                        (item) =>
+                          item.quantity > 0 ||
+                          item.id === bookingDraft.equipmentId
+                      )
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} · {item.quantity} in stock
+                        </option>
+                      ))}
                   </select>
                 </label>
               )}
@@ -1032,7 +1435,11 @@ export default function AdminDashboardPage() {
                     <input
                       type="number"
                       min="1"
-                      max="20"
+                      max={
+                        inventoryEquipment.find(
+                          (item) => item.id === bookingDraft.equipmentId
+                        )?.quantity ?? 1
+                      }
                       step="1"
                       required
                       value={bookingDraft.quantity}

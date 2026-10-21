@@ -3,6 +3,7 @@ import {
   type PaymentItem,
   validatePaymentCart,
 } from "@/lib/payments";
+import { resolveInventoryCart } from "@/lib/resolve-inventory-cart";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 export type PendingOrder = {
@@ -14,17 +15,20 @@ export type PendingOrder = {
   cart: PaymentItem[];
 };
 
-export function normalizeBookingItem(
+export async function normalizeBookingItem(
   value: unknown,
   allowPastBookings = false
-): PaymentItem | null {
+): Promise<PaymentItem | null> {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
   if (candidate.type !== "court" && candidate.type !== "equipment") {
     return null;
   }
 
-  return validatePaymentCart([candidate], { allowPastBookings })?.[0] ?? null;
+  const validated = validatePaymentCart([candidate], { allowPastBookings });
+  if (!validated) return null;
+  const resolved = await resolveInventoryCart(validated);
+  return resolved.items?.[0] ?? null;
 }
 
 export function readPaymentCart(value: unknown): PaymentItem[] | null {

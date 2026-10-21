@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       return Response.json({ message: "Choose a valid pending order." }, { status: 400 });
     }
 
-    const item = normalizeBookingItem(input.item);
+    const item = await normalizeBookingItem(input.item);
     if (!item) {
       return Response.json({ message: "Enter valid booking details." }, { status: 400 });
     }

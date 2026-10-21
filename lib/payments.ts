@@ -4,6 +4,7 @@ export type PaymentMethod = "external" | "membership_card";
 
 export type PaymentItem = {
   id: string;
+  inventoryId?: string;
   type: "court" | "equipment";
   name: string;
   date?: string;
@@ -49,6 +50,10 @@ export function validatePaymentCart(
     const quantity = item.quantity;
     const durationHours = item.durationHours;
     if (
+      typeof item.id !== "string" ||
+      !item.id.trim() ||
+      typeof item.name !== "string" ||
+      !item.name.trim() ||
       typeof quantity !== "number" ||
       !Number.isInteger(quantity) ||
       quantity < 1 ||
@@ -61,24 +66,32 @@ export function validatePaymentCart(
       return null;
     }
 
+    const unitPrice = item.unitPrice;
+    if (
+      typeof unitPrice !== "number" ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice <= 0
+    ) {
+      return null;
+    }
+
     if (item.type === "equipment") {
-      if (item.id !== "paddle" && item.id !== "ball") return null;
-      const equipment = item.id === "paddle"
-        ? { name: "Pickleball Paddle", unitPrice: 50 }
-        : { name: "Pickleball Ball", unitPrice: 10 };
       items.push({
-        id: item.id,
+        id: item.id.trim(),
+        inventoryId:
+          typeof item.inventoryId === "string"
+            ? item.inventoryId.trim()
+            : undefined,
         type: "equipment",
-        ...equipment,
+        name: item.name.trim(),
         durationHours,
         quantity,
+        unitPrice,
       });
       continue;
     }
 
-    if (item.type === "court" && typeof item.name === "string") {
-      const match = /^Court (0[1-9]|1[0-9]|20)$/.exec(item.name);
-      if (!match) return null;
+    if (item.type === "court") {
       const date = item.date;
       const startTime = item.startTime;
       if (
@@ -103,8 +116,6 @@ export function validatePaymentCart(
         return null;
       }
 
-      const courtNumber = Number(match[1]);
-      const indoorCourts = new Set([1, 2, 5, 7, 10, 12, 14, 16, 18, 20]);
       const bookingEnd = new Date(
         bookingStart.getTime() + durationHours * 60 * 60 * 1000
       );
@@ -115,15 +126,19 @@ export function validatePaymentCart(
         hourCycle: "h23",
       }).format(bookingEnd);
       items.push({
-        id: `court-${match[1]}`,
+        id: item.id.trim(),
+        inventoryId:
+          typeof item.inventoryId === "string"
+            ? item.inventoryId.trim()
+            : undefined,
         type: "court",
-        name: `Court ${match[1]}`,
+        name: item.name.trim(),
         date,
         startTime,
         endTime,
         durationHours,
         quantity,
-        unitPrice: indoorCourts.has(courtNumber) ? 300 : 250,
+        unitPrice,
       });
       continue;
     }

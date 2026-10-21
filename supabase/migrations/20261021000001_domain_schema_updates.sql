@@ -1,11 +1,8 @@
 -- Migration 1: Domain Schema Updates
--- Adds pending reservation status, court attributes, membership card identifiers,
+-- Adds court attributes, membership card identifiers,
 -- single active card partial index, and admin registry.
 
--- 1. Add 'Pending' to reservation_status enum
-ALTER TYPE public.reservation_status ADD VALUE IF NOT EXISTS 'Pending';
-
--- 2. Add court_type enum and court attributes
+-- 1. Add court_type enum and court attributes
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'court_type') THEN

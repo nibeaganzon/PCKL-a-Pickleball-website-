@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export function useMembershipBalance(cardId: string) {
   const normalizedCardId = cardId.trim().toUpperCase();
-  const validCardId = /^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(normalizedCardId);
+  const validCardId = /^(?:(?:PCKL|PICKL)-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(normalizedCardId);
   const [result, setResult] = useState<{
     cardId: string;
     balance: number | null;
@@ -29,7 +29,7 @@ export function useMembershipBalance(cardId: string) {
         if (active) {
           setResult({
             cardId: normalizedCardId,
-            balance: Number(result.balance),
+            balance: Number(result.balance ?? 0),
             error: "",
           });
         }

@@ -17,23 +17,28 @@ function formatPHP(amount: number) {
 export default function MembershipTopUpPage() {
   const router = useRouter();
   const { user, card, loading: authLoading } = useAuth();
-  const [cardId, setCardId] = useState("");
+  const [customCardId, setCustomCardId] = useState<string | null>(null);
+  const cardId = customCardId ?? (card?.card_number || card?.id || "");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
   const [proof, setProof] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { balance, error: balanceError, loading: balanceLoading } =
+  const { balance: fetchedBalance, error: balanceError, loading: balanceLoading } =
     useMembershipBalance(cardId);
+  const balance =
+    fetchedBalance !== null
+      ? fetchedBalance
+      : (!customCardId && card && Number.isFinite(card.balance)
+          ? card.balance
+          : null);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login?returnUrl=/membership/top-up");
-    } else if (card?.card_number && !cardId) {
-      setCardId(card.card_number);
     }
-  }, [authLoading, user, card, cardId, router]);
+  }, [authLoading, user, router]);
 
   useEffect(
     () => () => {
@@ -146,7 +151,7 @@ export default function MembershipTopUpPage() {
               <input
                 id="topUpCardId"
                 value={cardId}
-                onChange={(event) => setCardId(event.target.value.toUpperCase())}
+                onChange={(event) => setCustomCardId(event.target.value.toUpperCase())}
                 autoComplete="off"
                 maxLength={37}
                 placeholder="PCKL-..."
@@ -162,7 +167,7 @@ export default function MembershipTopUpPage() {
                 {balanceLoading && balance === null
                   ? "Checking..."
                   : balance === null
-                    ? "—"
+                    ? "-"
                     : formatPHP(balance)}
               </strong>
             </div>
@@ -196,7 +201,7 @@ export default function MembershipTopUpPage() {
               <div className="order-total">
                 <span>Amount to pay</span>
                 <strong>
-                  {Number(amount) > 0 ? formatPHP(Number(amount)) : "—"}
+                  {Number(amount) > 0 ? formatPHP(Number(amount)) : "-"}
                 </strong>
               </div>
               <div className="qr-payment">

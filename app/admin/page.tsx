@@ -253,12 +253,21 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
     if (!authLoading && user && isAdmin) {
-      void loadPayments();
-      void loadInventory();
-    } else if (!authLoading && (!user || !isAdmin)) {
-      setLoading(false);
+      const fetchAdminData = async () => {
+        await loadPayments();
+        if (active) {
+          await loadInventory();
+        }
+      };
+      void fetchAdminData();
     }
+
+    return () => {
+      active = false;
+    };
   }, [authLoading, user, isAdmin, loadPayments, loadInventory]);
 
   const visiblePayments = useMemo(() => {
@@ -368,7 +377,7 @@ export default function AdminDashboardPage() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || (user && isAdmin && loading)) {
     return (
       <main className="admin-page">
         <section className="admin-main admin-access-state">

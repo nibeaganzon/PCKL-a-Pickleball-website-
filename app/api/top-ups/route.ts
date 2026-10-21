@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     const cardId = cardIdValue.trim().toUpperCase();
     const reference = referenceValue.trim();
-    if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
+    if (!/^(?:(?:PCKL|PICKL)-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
       return Response.json({ message: "Enter a valid membership card ID." }, { status: 400 });
     }
     if (!amountPattern.test(amountValue)) {

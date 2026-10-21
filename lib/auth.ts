@@ -28,16 +28,19 @@ export function useAuth() {
 
         if (currentUser) {
           // Check admin status
-          const { data: adminMember } = await supabase
+          const { data: adminMember, error: adminError } = await supabase
             .from("admin_members")
             .select("user_id")
             .eq("user_id", currentUser.id)
             .maybeSingle();
 
+          if (adminError) {
+            console.error("Failed to check admin status:", adminError);
+          }
           setIsAdmin(Boolean(adminMember));
 
           // Load latest active card
-          const { data: activeCard } = await supabase
+          const { data: activeCard, error: cardError } = await supabase
             .from("membership_cards")
             .select("id, card_number, balance, status")
             .eq("user_id", currentUser.id)
@@ -46,10 +49,14 @@ export function useAuth() {
             .limit(1)
             .maybeSingle();
 
+          if (cardError) {
+            console.error("Failed to load active card:", cardError);
+          }
+
           if (activeCard) {
             setCard({
               id: activeCard.id,
-              card_number: activeCard.card_number ?? activeCard.id,
+              card_number: activeCard.card_number || activeCard.id,
               balance: Number(activeCard.balance ?? 0),
               status: activeCard.status,
             });

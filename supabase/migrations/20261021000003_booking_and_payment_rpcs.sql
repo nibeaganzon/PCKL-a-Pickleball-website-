@@ -164,8 +164,8 @@ BEGIN
         RAISE EXCEPTION 'COURT_NOT_FOUND: Court % was not found.', (v_item->>'name');
       END IF;
 
-      v_start := (v_item->>'date' || ' ' || v_item->>'startTime' || ':00+08')::timestamptz;
-      v_end := (v_item->>'date' || ' ' || v_item->>'endTime' || ':00+08')::timestamptz;
+      v_start := ((v_item->>'date') || ' ' || (v_item->>'startTime') || ':00+08')::timestamptz;
+      v_end := v_start + (v_duration || ' hours')::interval;
 
       INSERT INTO public.court_reservations (
         transaction_id,

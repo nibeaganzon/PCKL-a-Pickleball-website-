@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
+  if (!/^(?:(?:PCKL|PICKL)-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
     return Response.json({ message: "Enter a valid membership card ID." }, { status: 400 });
   }
 
@@ -56,6 +56,27 @@ export async function POST(request: Request) {
       }
       if (error.message.includes("INVALID_CART") || error.message.includes("INVALID_AMOUNT")) {
         return Response.json({ message: "Invalid checkout amount or cart." }, { status: 400 });
+      }
+      if (
+        error.message.includes("court_reservations_no_overlap") ||
+        error.code === "23P01"
+      ) {
+        return Response.json(
+          {
+            message:
+              "One or more selected court times are no longer available. Please choose a different slot.",
+          },
+          { status: 409 }
+        );
+      }
+      if (
+        error.message.includes("COURT_NOT_FOUND") ||
+        error.message.includes("EQUIPMENT_NOT_FOUND")
+      ) {
+        return Response.json(
+          { message: "One or more items in your cart could not be found." },
+          { status: 400 }
+        );
       }
       throw error;
     }

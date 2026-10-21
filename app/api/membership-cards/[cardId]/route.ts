@@ -6,7 +6,7 @@ export async function GET(
 ) {
   const { cardId } = await context.params;
   const trimmed = cardId.trim();
-  if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i.test(trimmed)) {
+  if (!/^(?:(?:PCKL|PICKL)-[A-Z0-9]{8,32}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i.test(trimmed)) {
     return Response.json({ message: "Membership card not found." }, { status: 404 });
   }
 
@@ -33,7 +33,7 @@ export async function GET(
     }
 
     return Response.json(
-      { cardId: card.card_number || card.id, balance: Number(card.balance) },
+      { cardId: card.card_number || card.id, balance: Number(card.balance ?? 0) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

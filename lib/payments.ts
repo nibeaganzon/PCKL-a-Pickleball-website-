@@ -60,7 +60,6 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
 
     if (item.type === "equipment") {
       const isPaddle = item.id === "paddle" || (typeof item.name === "string" && item.name.toLowerCase().includes("paddle"));
-      const isBall = item.id === "ball" || (typeof item.name === "string" && item.name.toLowerCase().includes("ball"));
       const name = typeof item.name === "string" ? item.name : isPaddle ? "Pickleball Paddle" : "Pickleball Ball";
       const unitPrice = typeof item.unitPrice === "number" && item.unitPrice > 0
         ? item.unitPrice

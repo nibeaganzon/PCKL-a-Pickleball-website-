@@ -20,20 +20,25 @@ export default function PaymentPage() {
   const router = useRouter();
   const { user, card, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [cardId, setCardId] = useState("");
+  const [customCardId, setCustomCardId] = useState<string | null>(null);
+  const cardId = customCardId ?? (card?.card_number || card?.id || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const { balance, error: balanceError, loading: balanceLoading } =
+  const { balance: fetchedBalance, error: balanceError, loading: balanceLoading } =
     useMembershipBalance(cardId);
+  const balance =
+    fetchedBalance !== null
+      ? fetchedBalance
+      : (!customCardId && card && Number.isFinite(card.balance)
+          ? card.balance
+          : null);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login?returnUrl=/payment");
-    } else if (card?.card_number && !cardId) {
-      setCardId(card.card_number);
     }
-  }, [authLoading, user, card, cardId, router]);
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
@@ -91,7 +96,7 @@ export default function PaymentPage() {
       return;
     }
 
-    if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId.trim())) {
+    if (!/^(?:(?:PCKL|PICKL)-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId.trim())) {
       setError("Please enter a valid membership card ID.");
       return;
     }
@@ -253,7 +258,7 @@ export default function PaymentPage() {
               <input
                 id="membershipCardId"
                 value={cardId}
-                onChange={(event) => setCardId(event.target.value.toUpperCase())}
+                onChange={(event) => setCustomCardId(event.target.value.toUpperCase())}
                 autoComplete="off"
                 maxLength={37}
                 placeholder="PCKL-..."
@@ -271,7 +276,7 @@ export default function PaymentPage() {
                 {balanceLoading && balance === null
                   ? "Checking..."
                   : balance === null
-                    ? "—"
+                    ? "-"
                     : formatPHP(balance)}
               </strong>
             </div>

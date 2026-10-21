@@ -137,7 +137,7 @@ export default function HomePage() {
 
           <p className="hero-description">
             Your next pickleball game starts here. Book a court, rent
-            equipment, and manage your membership — all in one place.
+            equipment, and manage your membership - all in one place.
           </p>
 
           <div className="hero-actions">
@@ -294,7 +294,9 @@ export default function HomePage() {
               <div className="court-image-wrap">
                 <img src={court.image} alt={`${court.name} pickleball court`} />
                 <span className="court-tag">{court.tag}</span>
-                <span className="court-number">{court.id.replace("court-", "")}</span>
+                <span className="court-number">
+                  {court.name.match(/\d+/)?.[0]?.padStart(2, "0") ?? court.id.replace("court-", "").padStart(2, "0")}
+                </span>
               </div>
 
               <div className="court-card-content">

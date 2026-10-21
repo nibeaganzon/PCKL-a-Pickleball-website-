@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth";
 type Court = {
   id: string | number;
   name: string;
+  courtNumber: string;
   type: "Indoor" | "Outdoor";
   price: number;
   status: "Available" | "Booked" | "Maintenance";
@@ -18,13 +19,24 @@ type Court = {
   description: string;
 };
 
-const courts: Court[] = [
+function extractCourtNumber(name: string, fallback: number | string): string {
+  const match = name.match(/\d+/);
+  if (match) return match[0].padStart(2, "0");
+  if (typeof fallback === "number") {
+    return String(fallback).padStart(2, "0");
+  }
+  const fallbackDigits = String(fallback).match(/\d+/);
+  if (fallbackDigits) return fallbackDigits[0].padStart(2, "0");
+  return String(fallback).slice(0, 2).toUpperCase();
+}
+
+const initialMockCourts = [
   {
     id: 1,
     name: "Court 01",
-    type: "Indoor",
+    type: "Indoor" as const,
     price: 300,
-    status: "Available",
+    status: "Available" as const,
     image:
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
     description: "Indoor court with weather-protected play.",
@@ -32,9 +44,9 @@ const courts: Court[] = [
   {
     id: 2,
     name: "Court 02",
-    type: "Indoor",
+    type: "Indoor" as const,
     price: 300,
-    status: "Booked",
+    status: "Booked" as const,
     image:
       "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
     description: "Ideal for practice sessions and friendly matches.",
@@ -42,9 +54,9 @@ const courts: Court[] = [
   {
     id: 3,
     name: "Court 03",
-    type: "Outdoor",
+    type: "Outdoor" as const,
     price: 250,
-    status: "Available",
+    status: "Available" as const,
     image:
       "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
     description: "Open-air court for your next game.",
@@ -52,9 +64,9 @@ const courts: Court[] = [
   {
     id: 4,
     name: "Court 04",
-    type: "Outdoor",
+    type: "Outdoor" as const,
     price: 250,
-    status: "Available",
+    status: "Available" as const,
     image:
       "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
     description: "Enjoy a casual game with friends.",
@@ -62,9 +74,9 @@ const courts: Court[] = [
   {
     id: 5,
     name: "Court 05",
-    type: "Indoor",
+    type: "Indoor" as const,
     price: 300,
-    status: "Maintenance",
+    status: "Maintenance" as const,
     image:
       "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
     description: "Temporarily unavailable for maintenance.",
@@ -72,9 +84,9 @@ const courts: Court[] = [
   {
     id: 6,
     name: "Court 06",
-    type: "Outdoor",
+    type: "Outdoor" as const,
     price: 250,
-    status: "Available",
+    status: "Available" as const,
     image:
       "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
     description: "An outdoor court for energetic matches.",
@@ -82,9 +94,9 @@ const courts: Court[] = [
   {
     id: 7,
     name: "Court 07",
-    type: "Indoor",
+    type: "Indoor" as const,
     price: 300,
-    status: "Available",
+    status: "Available" as const,
     image:
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
     description: "A comfortable indoor playing space.",
@@ -92,23 +104,23 @@ const courts: Court[] = [
   {
     id: 8,
     name: "Court 08",
-    type: "Outdoor",
+    type: "Outdoor" as const,
     price: 250,
-    status: "Booked",
+    status: "Booked" as const,
     image:
       "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
     description: "A court for group games and practice.",
   },
-  ...Array.from({ length: 12 }, (_, index): Court => {
+  ...Array.from({ length: 12 }, (_, index) => {
     const id = index + 9;
-    const type = id % 2 === 0 ? "Indoor" : "Outdoor";
+    const type = id % 2 === 0 ? ("Indoor" as const) : ("Outdoor" as const);
 
     return {
       id,
       name: `Court ${String(id).padStart(2, "0")}`,
       type,
       price: type === "Indoor" ? 300 : 250,
-      status: "Available",
+      status: "Available" as const,
       image:
         type === "Indoor"
           ? "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85"
@@ -120,6 +132,11 @@ const courts: Court[] = [
     };
   }),
 ];
+
+const courts: Court[] = initialMockCourts.map((c) => ({
+  ...c,
+  courtNumber: extractCourtNumber(c.name, c.id),
+}));
 
 type AvailabilityFilter = "All" | "Available" | "Booked";
 type CourtTypeFilter = "All" | "Indoor" | "Outdoor";
@@ -166,7 +183,7 @@ export default function CourtsPage() {
               .map((r) => r.court_id)
           );
 
-          const mapped: Court[] = data.map((item) => {
+          const mapped: Court[] = data.map((item, index) => {
             const isBooked = bookedCourtIds.has(item.id);
             const status: "Available" | "Booked" | "Maintenance" = !item.is_active
               ? "Maintenance"
@@ -177,6 +194,7 @@ export default function CourtsPage() {
             return {
               id: item.id,
               name: item.name,
+              courtNumber: extractCourtNumber(item.name, index + 1),
               type: item.type === "Outdoor" ? "Outdoor" : "Indoor",
               price: Number(item.price),
               status,
@@ -201,9 +219,12 @@ export default function CourtsPage() {
 
   const filteredCourts = useMemo(() => {
     return courtList.filter((court) => {
-      const matchesSearch = court.name
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const searchLower = search.toLowerCase().trim();
+      const matchesSearch =
+        !searchLower ||
+        court.name.toLowerCase().includes(searchLower) ||
+        court.courtNumber.includes(searchLower) ||
+        String(parseInt(court.courtNumber, 10)).includes(searchLower);
 
       const matchesAvailability =
         availability === "All" || court.status === availability;
@@ -471,7 +492,7 @@ export default function CourtsPage() {
                 </span>
 
                 <span className="court-number">
-                  {String(court.id).padStart(2, "0")}
+                  {court.courtNumber}
                 </span>
               </div>
 

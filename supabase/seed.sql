@@ -13,9 +13,15 @@ INSERT INTO auth.users (
   email,
   encrypted_password,
   email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
   last_sign_in_at,
   raw_app_meta_data,
   raw_user_meta_data,
+  is_sso_user,
+  is_anonymous,
   created_at,
   updated_at
 ) VALUES (
@@ -26,16 +32,26 @@ INSERT INTO auth.users (
   'nbhganzon@addu.edu.ph',
   extensions.crypt('password123', extensions.gen_salt('bf')),
   now(),
+  '',
+  '',
+  '',
+  '',
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Nicole Beatriz Ganzon"}',
+  false,
+  false,
   now(),
   now()
 ) ON CONFLICT (id) DO UPDATE
   SET email = 'nbhganzon@addu.edu.ph',
       raw_user_meta_data = '{"full_name":"Nicole Beatriz Ganzon"}',
       encrypted_password = extensions.crypt('password123', extensions.gen_salt('bf')),
-      email_confirmed_at = now();
+      email_confirmed_at = now(),
+      confirmation_token = '',
+      recovery_token = '',
+      email_change_token_new = '',
+      email_change = '';
 
 INSERT INTO auth.identities (
   id,

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PaymentItem, PaymentRecord, PaymentStatus } from "@/lib/payments";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth";
 
 type Activity = {
   id: string;
@@ -52,6 +53,7 @@ function describeItems(items: PaymentItem[]) {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const { user, isAdmin, loading: authLoading } = useAuth();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [adminEmail, setAdminEmail] = useState("");
   const [loading, setLoading] = useState(true);
@@ -101,9 +103,7 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadInventory();
-  }, [loadInventory]);
+
 
   async function handleCreateCourt(event: React.FormEvent) {
     event.preventDefault();
@@ -253,11 +253,13 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    const loadTimer = window.setTimeout(() => {
+    if (!authLoading && user && isAdmin) {
       void loadPayments();
-    }, 0);
-    return () => window.clearTimeout(loadTimer);
-  }, [loadPayments]);
+      void loadInventory();
+    } else if (!authLoading && (!user || !isAdmin)) {
+      setLoading(false);
+    }
+  }, [authLoading, user, isAdmin, loadPayments, loadInventory]);
 
   const visiblePayments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -366,11 +368,41 @@ export default function AdminDashboardPage() {
     }
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <main className="admin-page">
         <section className="admin-main admin-access-state">
-          <p>Loading pending payments...</p>
+          <p>Verifying admin permissions...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="admin-page">
+        <section className="admin-main admin-access-state">
+          <span className="admin-topbar-eyebrow">PCKL+ ADMINISTRATION</span>
+          <h1>Sign in required</h1>
+          <p>Sign in with an authorized PCKL+ administrator account to access the dashboard.</p>
+          <Link href="/login?returnUrl=/admin" className="admin-confirm-button">
+            Go to sign in
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <main className="admin-page">
+        <section className="admin-main admin-access-state">
+          <span className="admin-topbar-eyebrow">PCKL+ ADMINISTRATION</span>
+          <h1>Admin access required</h1>
+          <p>This account ({user.email}) is not authorized to access the PCKL+ administration portal.</p>
+          <Link href="/login" className="admin-confirm-button">
+            Switch account
+          </Link>
         </section>
       </main>
     );

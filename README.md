@@ -50,3 +50,8 @@ Court reservations and equipment rentals share one browser cart. Select a
 future date, start time, and duration for available courts; add rental gear
 from the equipment page; then review both together at `/cart` or go straight
 to checkout.
+
+## Court and rental inventory
+
+Administrators can manage courts and rental equipment from the dashboard.
+Customer inventory pages refresh from Supabase every five seconds, and checkout rechecks current inventory and prices on the server.

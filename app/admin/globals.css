@@ -880,6 +880,167 @@
   text-align: center;
 }
 
+/* Booking management */
+
+.admin-booking-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-booking-actions > strong {
+  margin-right: 5px;
+  color: var(--pckl-navy);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.admin-delete-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #efcbd0;
+  border-radius: 4px;
+  background: var(--pckl-white);
+  color: #a72d36;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-delete-button:hover:not(:disabled) {
+  background: #fff1f1;
+}
+
+.admin-delete-button:disabled {
+  border-color: var(--admin-border);
+  color: #a0a6b2;
+  cursor: not-allowed;
+}
+
+/* Inventory management */
+
+.admin-inventory-panel {
+  margin-top: 22px;
+  padding: 22px 24px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--pckl-white);
+}
+
+.admin-inventory-panel > .admin-section-heading {
+  margin-bottom: 18px;
+}
+
+.admin-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-inventory-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 15px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+}
+
+.admin-inventory-card h3 {
+  margin: 5px 0;
+  color: var(--pckl-navy);
+  font-size: 12px;
+}
+
+.admin-inventory-card p {
+  margin: 0 0 8px;
+  color: var(--admin-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.admin-inventory-card > div:first-child > strong {
+  color: var(--pckl-navy);
+  font-size: 10px;
+}
+
+.admin-inventory-kind {
+  color: #788600;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.admin-inventory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.admin-inventory-form-heading,
+.admin-inventory-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-inventory-form-heading h3 {
+  margin: 0;
+  color: var(--pckl-navy);
+  font-family: "Space Grotesk", Arial, sans-serif;
+  font-size: 14px;
+}
+
+.admin-inventory-form > label,
+.admin-inventory-form-grid > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--admin-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-inventory-form input,
+.admin-inventory-form select,
+.admin-inventory-form textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  background: var(--pckl-white);
+  color: var(--admin-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.admin-inventory-form textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.admin-inventory-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.admin-inventory-form-actions {
+  justify-content: flex-end;
+}
+
 /* Activity */
 
 .admin-activity-panel {
@@ -982,6 +1143,54 @@
   border-radius: 10px;
   background: var(--pckl-white);
   box-shadow: 0 24px 80px rgb(0 0 0 / 22%);
+}
+
+.admin-booking-modal {
+  max-width: 540px;
+}
+
+.admin-booking-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 22px 25px 25px;
+}
+
+.admin-booking-form > label,
+.admin-booking-field-grid > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--admin-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-booking-form input,
+.admin-booking-form select {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  background: var(--pckl-white);
+  color: var(--admin-text);
+  font-size: 11px;
+}
+
+.admin-booking-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.admin-booking-form .admin-verification-warning {
+  margin: 0;
+}
+
+.admin-booking-form .admin-modal-actions {
+  margin-top: 0;
 }
 
 .admin-modal-header {
@@ -1363,6 +1572,21 @@
     font-size: 16px;
   }
 
+  .admin-booking-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    padding-left: 0;
+  }
+
+  .admin-booking-actions > strong {
+    width: 100%;
+    margin-bottom: 3px;
+  }
+
+  .admin-booking-form {
+    padding: 18px;
+  }
+
   .admin-footer {
     padding: 17px;
     font-size: 8px;
@@ -1374,6 +1598,19 @@
 
   .admin-modal-header {
     padding: 18px;
+  }
+
+  .admin-inventory-panel {
+    padding: 18px;
+  }
+
+  .admin-inventory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-inventory-panel > .admin-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

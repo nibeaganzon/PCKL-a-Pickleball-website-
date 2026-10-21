@@ -1,5 +1,6 @@
 export type CartItem = {
   id: string;
+  inventoryId?: string;
   type: "court" | "equipment";
   name: string;
   date?: string;
@@ -59,6 +60,8 @@ function normalizeCartItem(value: unknown): CartItem | null {
 
   return {
     id: item.id,
+    inventoryId:
+      typeof item.inventoryId === "string" ? item.inventoryId : undefined,
     type,
     name: item.name,
     date: typeof item.date === "string" ? item.date : undefined,

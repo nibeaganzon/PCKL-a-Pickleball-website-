@@ -42,19 +42,88 @@ export default function PaymentPage() {
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
-      try {
-        const savedCart = readCart();
-        const validatedCart = validatePaymentCart(savedCart);
-        if (savedCart.length > 0 && !validatedCart) {
-          throw new Error("Invalid cart item");
-        }
-        setCart(validatedCart ?? []);
-      } catch {
-        setError("Your cart could not be loaded. Please review your items.");
-      } finally {
-        setLoaded(true);
-      }
+      void (async () => {
+        try {
+          const savedCart = readCart();
+          const validatedCart = validatePaymentCart(savedCart);
+          if (savedCart.length > 0 && !validatedCart) {
+            throw new Error(
+              "Your cart contains invalid items. Please review your items."
+            );
+          }
+          const inventoryResponse = await fetch("/api/inventory", {
+            cache: "no-store",
+          });
+          const inventoryResult = await inventoryResponse.json();
+          if (!inventoryResponse.ok) {
+            throw new Error(
+              inventoryResult.message || "Current inventory could not be loaded."
+            );
+          }
 
+          let unavailableItem = false;
+          const currentCart = validatedCart ?? [];
+          const refreshedCart: CartItem[] = currentCart.map((item) => {
+            if (item.type === "court") {
+              const court = inventoryResult.courts.find(
+                (candidate: { id: string; name: string; status: string }) =>
+                  candidate.id === item.id ||
+                  candidate.name.toLowerCase() === item.name.toLowerCase()
+              );
+              if (!court || court.status !== "Available") {
+                unavailableItem = true;
+                return item;
+              }
+              return {
+                ...item,
+                inventoryId: court.id,
+                name: court.name,
+                unitPrice: court.price,
+                image: court.image,
+              };
+            }
+
+            const legacyName =
+              item.id === "paddle"
+                ? "Pickleball Paddle"
+                : item.id === "ball"
+                  ? "Pickleball Ball"
+                  : item.name;
+            const equipment = inventoryResult.equipment.find(
+              (candidate: { id: string; name: string }) =>
+                candidate.id === item.id ||
+                candidate.name.toLowerCase() === legacyName.toLowerCase()
+            );
+            if (!equipment) {
+              unavailableItem = true;
+              return item;
+            }
+            return {
+              ...item,
+              id: equipment.id,
+              inventoryId: equipment.id,
+              name: equipment.name,
+              unitPrice: equipment.price,
+              image: equipment.image,
+            };
+          });
+          setCart(refreshedCart);
+          writeCart(refreshedCart);
+          if (unavailableItem) {
+            setError(
+              "Some items in your cart are no longer available. Review or remove them before checkout."
+            );
+          }
+        } catch (loadError) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Your cart could not be loaded. Please review your items."
+          );
+        } finally {
+          setLoaded(true);
+        }
+      })();
     }, 0);
     return () => window.clearTimeout(loadTimer);
   }, []);

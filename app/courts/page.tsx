@@ -5,145 +5,18 @@ import Link from "next/link";
 import CurrentYear from "../current-year";
 import CartIndicator from "@/components/cart-indicator";
 import { readCart, writeCart, type CartItem } from "@/lib/cart";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { useInventory } from "@/lib/use-inventory";
+import type { CourtInventoryItem } from "@/lib/inventory";
 
-type Court = {
-  id: string | number;
-  name: string;
-  courtNumber: string;
-  type: "Indoor" | "Outdoor";
-  price: number;
-  status: "Available" | "Booked" | "Maintenance";
-  image: string;
-  description: string;
-};
-
-function extractCourtNumber(name: string, fallback: number | string): string {
-  const match = name.match(/\d+/);
-  if (match) return match[0].padStart(2, "0");
-  if (typeof fallback === "number") {
-    return String(fallback).padStart(2, "0");
-  }
-  const fallbackDigits = String(fallback).match(/\d+/);
-  if (fallbackDigits) return fallbackDigits[0].padStart(2, "0");
-  return String(fallback).slice(0, 2).toUpperCase();
-}
-
-const initialMockCourts = [
-  {
-    id: 1,
-    name: "Court 01",
-    type: "Indoor" as const,
-    price: 300,
-    status: "Available" as const,
-    image:
-      "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
-    description: "Indoor court with weather-protected play.",
-  },
-  {
-    id: 2,
-    name: "Court 02",
-    type: "Indoor" as const,
-    price: 300,
-    status: "Booked" as const,
-    image:
-      "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
-    description: "Ideal for practice sessions and friendly matches.",
-  },
-  {
-    id: 3,
-    name: "Court 03",
-    type: "Outdoor" as const,
-    price: 250,
-    status: "Available" as const,
-    image:
-      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
-    description: "Open-air court for your next game.",
-  },
-  {
-    id: 4,
-    name: "Court 04",
-    type: "Outdoor" as const,
-    price: 250,
-    status: "Available" as const,
-    image:
-      "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
-    description: "Enjoy a casual game with friends.",
-  },
-  {
-    id: 5,
-    name: "Court 05",
-    type: "Indoor" as const,
-    price: 300,
-    status: "Maintenance" as const,
-    image:
-      "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
-    description: "Temporarily unavailable for maintenance.",
-  },
-  {
-    id: 6,
-    name: "Court 06",
-    type: "Outdoor" as const,
-    price: 250,
-    status: "Available" as const,
-    image:
-      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
-    description: "An outdoor court for energetic matches.",
-  },
-  {
-    id: 7,
-    name: "Court 07",
-    type: "Indoor" as const,
-    price: 300,
-    status: "Available" as const,
-    image:
-      "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
-    description: "A comfortable indoor playing space.",
-  },
-  {
-    id: 8,
-    name: "Court 08",
-    type: "Outdoor" as const,
-    price: 250,
-    status: "Booked" as const,
-    image:
-      "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
-    description: "A court for group games and practice.",
-  },
-  ...Array.from({ length: 12 }, (_, index) => {
-    const id = index + 9;
-    const type = id % 2 === 0 ? ("Indoor" as const) : ("Outdoor" as const);
-
-    return {
-      id,
-      name: `Court ${String(id).padStart(2, "0")}`,
-      type,
-      price: type === "Indoor" ? 300 : 250,
-      status: "Available" as const,
-      image:
-        type === "Indoor"
-          ? "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85"
-          : "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
-      description:
-        type === "Indoor"
-          ? "Indoor court for comfortable all-weather play."
-          : "Outdoor court for your next pickleball session.",
-    };
-  }),
-];
-
-const courts: Court[] = initialMockCourts.map((c) => ({
-  ...c,
-  courtNumber: extractCourtNumber(c.name, c.id),
-}));
+type Court = CourtInventoryItem;
 
 type AvailabilityFilter = "All" | "Available" | "Booked";
 type CourtTypeFilter = "All" | "Indoor" | "Outdoor";
 
 export default function CourtsPage() {
   const { user, card, isAdmin, signOut } = useAuth();
-  const [courtList, setCourtList] = useState<Court[]>(courts);
+  const { courts, loading, error } = useInventory();
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [bookingDate, setBookingDate] = useState("");
   const [bookingStartTime, setBookingStartTime] = useState("");
@@ -157,85 +30,33 @@ export default function CourtsPage() {
   const [courtType, setCourtType] = useState<CourtTypeFilter>("All");
 
   useEffect(() => {
-    async function loadCourtsFromDatabase() {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data, error } = await supabase
-          .from("courts")
-          .select("id, name, type, price, description, images, is_active")
-          .order("name", { ascending: true });
-
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const { data: reservations } = await supabase
-            .from("court_reservations")
-            .select("court_id, start_date, end_date, status")
-            .in("status", ["Active", "Pending"]);
-
-          const bookedCourtIds = new Set(
-            (reservations ?? [])
-              .filter((r) => {
-                const now = Date.now();
-                const start = new Date(r.start_date).getTime();
-                const end = new Date(r.end_date).getTime();
-                return now >= start && now <= end;
-              })
-              .map((r) => r.court_id)
-          );
-
-          const mapped: Court[] = data.map((item, index) => {
-            const isBooked = bookedCourtIds.has(item.id);
-            const status: "Available" | "Booked" | "Maintenance" = !item.is_active
-              ? "Maintenance"
-              : isBooked
-              ? "Booked"
-              : "Available";
-
-            return {
-              id: item.id,
-              name: item.name,
-              courtNumber: extractCourtNumber(item.name, index + 1),
-              type: item.type === "Outdoor" ? "Outdoor" : "Indoor",
-              price: Number(item.price),
-              status,
-              image:
-                item.images && item.images.length > 0
-                  ? item.images[0]
-                  : item.type === "Outdoor"
-                  ? "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85"
-                  : "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
-              description: item.description || "Pickleball court ready for your next game.",
-            };
-          });
-          setCourtList(mapped);
-        }
-      } catch (err) {
-        console.error("Failed to load courts from Supabase:", err);
-      }
-    }
-
-    void loadCourtsFromDatabase();
+    const today = new Date();
+    const formatted = `${today.getFullYear()}-${String(
+      today.getMonth() + 1
+    ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    setMinimumBookingDate(formatted);
   }, []);
 
   const filteredCourts = useMemo(() => {
-    return courtList.filter((court) => {
+    return courts.filter((court) => {
       const searchLower = search.toLowerCase().trim();
+      const courtNum = court.name.match(/\d+/)?.[0] ?? "";
       const matchesSearch =
         !searchLower ||
         court.name.toLowerCase().includes(searchLower) ||
-        court.courtNumber.includes(searchLower) ||
-        String(parseInt(court.courtNumber, 10)).includes(searchLower);
+        courtNum.includes(searchLower);
 
       const matchesAvailability =
         availability === "All" || court.status === availability;
 
-      const matchesType = courtType === "All" || court.type === courtType;
+      const matchesType =
+        courtType === "All" || court.courtType === courtType;
 
       return matchesSearch && matchesAvailability && matchesType;
     });
-  }, [courtList, search, availability, courtType]);
+  }, [courts, search, availability, courtType]);
 
-  const availableCount = courtList.filter(
+  const availableCount = courts.filter(
     (court) => court.status === "Available"
   ).length;
 
@@ -257,6 +78,7 @@ export default function CourtsPage() {
       ).padStart(2, "0")}`;
       const reservation: CartItem = {
         id: `court-${selectedCourt.id}-${Date.now()}`,
+        inventoryId: selectedCourt.id,
         type: "court",
         name: selectedCourt.name,
         date: bookingDate,
@@ -348,7 +170,7 @@ export default function CourtsPage() {
           </h1>
 
           <p>
-            Twenty courts. One location. Endless rallies.
+            Courts for every game. One location. Endless rallies.
             Find your spot and book your next pickleball session in General
             Santos City.
           </p>
@@ -365,7 +187,7 @@ export default function CourtsPage() {
             <strong>General Santos City</strong>
           </div>
           <div className="hero-image-number">
-            <strong>20</strong>
+            <strong>{courts.length}</strong>
             <span>COURTS</span>
           </div>
         </div>
@@ -375,7 +197,7 @@ export default function CourtsPage() {
         <div className="overview-item">
           <span className="overview-icon">▦</span>
           <div>
-            <strong>20</strong>
+            <strong>{courts.length}</strong>
             <span>Total courts</span>
           </div>
         </div>
@@ -384,7 +206,7 @@ export default function CourtsPage() {
           <span className="overview-icon lime-icon">✓</span>
           <div>
             <strong>{availableCount}</strong>
-            <span>Available in demo</span>
+            <span>Available to book</span>
           </div>
         </div>
 
@@ -411,7 +233,7 @@ export default function CourtsPage() {
           </div>
 
           <span className="court-result-count">
-            {filteredCourts.length} of 20 courts
+            {filteredCourts.length} of {courts.length} courts
           </span>
         </div>
 
@@ -472,6 +294,9 @@ export default function CourtsPage() {
           </div>
         )}
 
+        {error && <p className="court-cart-notice" role="alert">{error}</p>}
+        {loading && <p role="status">Loading courts...</p>}
+
         <div className="courts-grid">
           {filteredCourts.map((court) => (
             <article className="court-card" key={court.id}>
@@ -492,13 +317,13 @@ export default function CourtsPage() {
                 </span>
 
                 <span className="court-number">
-                  {court.courtNumber}
+                  {court.name.match(/\d+/)?.[0]?.padStart(2, "0") ?? court.name}
                 </span>
               </div>
 
               <div className="court-card-content">
                 <div className="court-card-topline">
-                  <span className="court-type">{court.type}</span>
+                  <span className="court-type">{court.courtType}</span>
                   <span className="court-location">⌖ GenSan</span>
                 </div>
 
@@ -548,7 +373,7 @@ export default function CourtsPage() {
           ))}
         </div>
 
-        {filteredCourts.length === 0 && (
+        {!loading && !error && filteredCourts.length === 0 && (
           <div className="courts-empty">
             <span>⌕</span>
             <h3>No courts found</h3>
@@ -622,7 +447,7 @@ export default function CourtsPage() {
             </button>
             <span className="section-eyebrow">COURT RESERVATION</span>
             <h2 id="court-booking-title">{selectedCourt.name}</h2>
-            <p>₱{selectedCourt.price} per hour · {selectedCourt.type}</p>
+            <p>₱{selectedCourt.price} per hour · {selectedCourt.courtType}</p>
 
             <label htmlFor="booking-date">Reservation date</label>
             <input

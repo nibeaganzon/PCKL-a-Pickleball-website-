@@ -3,36 +3,7 @@
 import CurrentYear from "./current-year";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-
-const courts = [
-  {
-    id: "court-01",
-    name: "Court 01",
-    type: "Outdoor Court",
-    price: 300,
-    image:
-      "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
-    tag: "POPULAR",
-  },
-  {
-    id: "court-02",
-    name: "Court 02",
-    type: "Outdoor Court",
-    price: 300,
-    image:
-      "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
-    tag: "AVAILABLE FOR BOOKING",
-  },
-  {
-    id: "court-03",
-    name: "Court 03",
-    type: "Outdoor Court",
-    price: 300,
-    image:
-      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85",
-    tag: "GREAT FOR DOUBLES",
-  },
-];
+import { useInventory } from "@/lib/use-inventory";
 
 const services = [
   {
@@ -66,6 +37,8 @@ const services = [
 
 export default function HomePage() {
   const { user, card, isAdmin, signOut } = useAuth();
+  const { courts, loading, error } = useInventory();
+  const featuredCourts = courts.slice(0, 3);
 
   return (
     <main>
@@ -151,7 +124,7 @@ export default function HomePage() {
 
           <div className="hero-stats">
             <div>
-              <strong>20</strong>
+              <strong>{courts.length}</strong>
               <span>Pickleball courts</span>
             </div>
             <div className="stat-divider" />
@@ -284,18 +257,25 @@ export default function HomePage() {
             </p>
           </div>
           <a className="text-link" href="/courts">
-            View all 20 courts <span aria-hidden="true">↗</span>
+            View all {courts.length} courts <span aria-hidden="true">↗</span>
           </a>
         </div>
 
+        {loading && <p role="status">Loading courts...</p>}
+        {error && <p role="alert">{error}</p>}
+
         <div className="court-grid">
-          {courts.map((court) => (
+          {featuredCourts.map((court, index) => (
             <article className="court-card" key={court.id}>
               <div className="court-image-wrap">
                 <img src={court.image} alt={`${court.name} pickleball court`} />
-                <span className="court-tag">{court.tag}</span>
+                <span className="court-tag">
+                  {court.status === "Available"
+                    ? "AVAILABLE FOR BOOKING"
+                    : court.status.toUpperCase()}
+                </span>
                 <span className="court-number">
-                  {court.name.match(/\d+/)?.[0]?.padStart(2, "0") ?? court.id.replace("court-", "").padStart(2, "0")}
+                  {court.name.match(/\d+/)?.[0]?.padStart(2, "0") ?? String(index + 1).padStart(2, "0")}
                 </span>
               </div>
 
@@ -313,7 +293,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="court-card-footer">
-                  <span className="court-type">{court.type}</span>
+                  <span className="court-type">{court.courtType} Court</span>
                   <span className="court-price">
                     <strong>₱{court.price}</strong>
                     <span>/ hour</span>
@@ -329,8 +309,8 @@ export default function HomePage() {
         </div>
 
         <p className="availability-disclaimer">
-          Court photos are illustrative. Prices and available time slots shown
-          here are sample content and should be confirmed before launch.
+          Court details and prices reflect the current inventory. Check
+          availability before booking.
         </p>
       </section>
 
@@ -425,7 +405,7 @@ export default function HomePage() {
           </h2>
           <p>
             PCKL+ is designed for one pickleball facility in General Santos
-            City, with 20 courts to support your next match.
+            City, with {courts.length} courts to support your next match.
           </p>
           <div className="location-detail">
             <span className="location-pin" aria-hidden="true">

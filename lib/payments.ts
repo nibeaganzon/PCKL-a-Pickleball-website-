@@ -4,6 +4,7 @@ export type PaymentMethod = "external" | "membership_card";
 
 export type PaymentItem = {
   id: string;
+  inventoryId?: string;
   type: "court" | "equipment";
   name: string;
   date?: string;
@@ -33,7 +34,10 @@ export type PaymentRecord = {
   reviewed_at: string | null;
 };
 
-export function validatePaymentCart(value: unknown): PaymentItem[] | null {
+export function validatePaymentCart(
+  value: unknown,
+  options: { allowPastBookings?: boolean } = {}
+): PaymentItem[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
     return null;
   }
@@ -46,6 +50,10 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
     const quantity = item.quantity;
     const durationHours = item.durationHours;
     if (
+      typeof item.id !== "string" ||
+      !item.id.trim() ||
+      typeof item.name !== "string" ||
+      !item.name.trim() ||
       typeof quantity !== "number" ||
       !Number.isInteger(quantity) ||
       quantity < 1 ||
@@ -58,26 +66,32 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
       return null;
     }
 
-    if (item.type === "equipment") {
-      const isPaddle = item.id === "paddle" || (typeof item.name === "string" && item.name.toLowerCase().includes("paddle"));
-      const name = typeof item.name === "string" ? item.name : isPaddle ? "Pickleball Paddle" : "Pickleball Ball";
-      const unitPrice = typeof item.unitPrice === "number" && item.unitPrice > 0
-        ? item.unitPrice
-        : isPaddle ? 50 : 10;
+    const unitPrice = item.unitPrice;
+    if (
+      typeof unitPrice !== "number" ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice <= 0
+    ) {
+      return null;
+    }
 
+    if (item.type === "equipment") {
       items.push({
-        id: String(item.id || (isPaddle ? "paddle" : "ball")),
+        id: item.id.trim(),
+        inventoryId:
+          typeof item.inventoryId === "string"
+            ? item.inventoryId.trim()
+            : undefined,
         type: "equipment",
-        name,
-        unitPrice: unitPrice || (isPaddle ? 50 : 10),
+        name: item.name.trim(),
         durationHours,
         quantity,
+        unitPrice,
       });
       continue;
     }
 
-    if (item.type === "court" && typeof item.name === "string") {
-      const match = /^Court (0[1-9]|1[0-9]|20)$/.exec(item.name);
+    if (item.type === "court") {
       const date = item.date;
       const startTime = item.startTime;
       if (
@@ -98,12 +112,9 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
         return null;
       }
       const bookingStart = new Date(`${date}T${startTime}:00+08:00`);
-      if (bookingStart.getTime() <= Date.now()) return null;
-
-      const courtNumber = match ? Number(match[1]) : 0;
-      const indoorCourts = new Set([1, 2, 5, 7, 10, 12, 14, 16, 18, 20]);
-      const defaultPrice = indoorCourts.has(courtNumber) ? 300 : 250;
-      const unitPrice = typeof item.unitPrice === "number" && item.unitPrice > 0 ? item.unitPrice : defaultPrice;
+      if (!options.allowPastBookings && bookingStart.getTime() <= Date.now()) {
+        return null;
+      }
 
       const bookingEnd = new Date(
         bookingStart.getTime() + durationHours * 60 * 60 * 1000
@@ -116,9 +127,13 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
       }).format(bookingEnd);
 
       items.push({
-        id: String(item.id || (match ? `court-${match[1]}` : item.name)),
+        id: item.id.trim(),
+        inventoryId:
+          typeof item.inventoryId === "string"
+            ? item.inventoryId.trim()
+            : undefined,
         type: "court",
-        name: item.name,
+        name: item.name.trim(),
         date,
         startTime,
         endTime,

@@ -6,6 +6,8 @@ import Link from "next/link";
 import CurrentYear from "../current-year";
 import CartIndicator from "@/components/cart-indicator";
 import { readCart, writeCart } from "@/lib/cart";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth";
 
 type Equipment = {
   id: string;
@@ -43,6 +45,8 @@ const equipment: Equipment[] = [
 ];
 
 export default function EquipmentPage() {
+  const { user, card, isAdmin, signOut } = useAuth();
+  const [equipmentList, setEquipmentList] = useState<Equipment[]>(equipment);
   const [hours, setHours] = useState<Record<string, number>>({
     paddle: 1,
     ball: 1,
@@ -61,30 +65,59 @@ export default function EquipmentPage() {
   const [addedItem, setAddedItem] = useState<Equipment | null>(null);
 
   useEffect(() => {
-    const loadTimer = window.setTimeout(() => {
+    async function loadEquipmentFromDatabase() {
       try {
-        const cart = readCart();
-        setRemainingStock(
-          Object.fromEntries(
-            equipment.map((item) => [
-              item.id,
-              Math.max(
-                0,
-                item.stock -
-                  cart
-                    .filter((cartItem) => cartItem.id === item.id)
-                    .reduce((total, cartItem) => total + cartItem.quantity, 0)
-              ),
-            ])
-          )
-        );
-        setCartReady(true);
-      } catch {
-        setMessage("Unable to load your cart. Please refresh and try again.");
-      }
-    }, 0);
+        const supabase = createSupabaseBrowserClient();
+        const { data, error } = await supabase
+          .from("equipments")
+          .select("id, name, description, price, quantity, images")
+          .order("name", { ascending: true });
 
-    return () => window.clearTimeout(loadTimer);
+        if (error) throw error;
+        if (data && data.length > 0) {
+          const mapped: Equipment[] = data.map((item) => {
+            const isPaddle = item.name.toLowerCase().includes("paddle");
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description || "Equipment rental for your match.",
+              price: Number(item.price),
+              unit: isPaddle ? "per paddle / hour" : "per ball / hour",
+              image:
+                item.images && item.images.length > 0
+                  ? item.images[0]
+                  : isPaddle
+                  ? "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85"
+                  : "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85",
+              stock: Number(item.quantity ?? 20),
+            };
+          });
+          setEquipmentList(mapped);
+
+          const cart = readCart();
+          setRemainingStock(
+            Object.fromEntries(
+              mapped.map((item) => [
+                item.id,
+                Math.max(
+                  0,
+                  item.stock -
+                    cart
+                      .filter((cartItem) => cartItem.id === item.id || cartItem.name === item.name)
+                      .reduce((total, cartItem) => total + cartItem.quantity, 0)
+                ),
+              ])
+            )
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load equipments from Supabase:", err);
+      } finally {
+        setCartReady(true);
+      }
+    }
+
+    void loadEquipmentFromDatabase();
   }, []);
 
   function addToCart(item: Equipment, requestedQuantity: number) {
@@ -176,9 +209,30 @@ export default function EquipmentPage() {
           <Link href="/payment" className="equipment-checkout-button">
             Checkout
           </Link>
-          <Link href="/login" className="equipment-login">
-            Log in
-          </Link>
+          {isAdmin && (
+            <Link href="/admin" className="equipment-checkout-button" style={{ background: "#059669" }}>
+              Admin
+            </Link>
+          )}
+          {user ? (
+            <>
+              <span style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                {card?.card_number || user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="equipment-login"
+                style={{ cursor: "pointer", background: "none", border: "none" }}
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <Link href="/login" className="equipment-login">
+              Log in
+            </Link>
+          )}
         </div>
       </header>
 
@@ -252,7 +306,7 @@ export default function EquipmentPage() {
         )}
 
         <div className="equipment-grid">
-          {equipment.map((item) => {
+          {equipmentList.map((item) => {
             const itemHours = hours[item.id] ?? 1;
             const available = remainingStock[item.id] ?? item.stock;
             const itemQuantity = Math.min(

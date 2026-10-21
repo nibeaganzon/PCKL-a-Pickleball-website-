@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { validatePaymentCart } from "@/lib/payments";
 import { readCart, writeCart, type CartItem } from "@/lib/cart";
 import { useMembershipBalance } from "@/lib/use-membership-balance";
+import { useAuth } from "@/lib/auth";
 
 const formatPHP = (amount: number) =>
   new Intl.NumberFormat("en-PH", {
@@ -17,6 +18,7 @@ const formatPHP = (amount: number) =>
 
 export default function PaymentPage() {
   const router = useRouter();
+  const { user, card, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cardId, setCardId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,6 +26,14 @@ export default function PaymentPage() {
   const [loaded, setLoaded] = useState(false);
   const { balance, error: balanceError, loading: balanceLoading } =
     useMembershipBalance(cardId);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login?returnUrl=/payment");
+    } else if (card?.card_number && !cardId) {
+      setCardId(card.card_number);
+    }
+  }, [authLoading, user, card, cardId, router]);
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
@@ -81,7 +91,7 @@ export default function PaymentPage() {
       return;
     }
 
-    if (!/^PCKL-[0-9A-F]{32}$/i.test(cardId.trim())) {
+    if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId.trim())) {
       setError("Please enter a valid membership card ID.");
       return;
     }

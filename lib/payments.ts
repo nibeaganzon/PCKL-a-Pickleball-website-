@@ -59,14 +59,18 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
     }
 
     if (item.type === "equipment") {
-      if (item.id !== "paddle" && item.id !== "ball") return null;
-      const equipment = item.id === "paddle"
-        ? { name: "Pickleball Paddle", unitPrice: 50 }
-        : { name: "Pickleball Ball", unitPrice: 10 };
+      const isPaddle = item.id === "paddle" || (typeof item.name === "string" && item.name.toLowerCase().includes("paddle"));
+      const isBall = item.id === "ball" || (typeof item.name === "string" && item.name.toLowerCase().includes("ball"));
+      const name = typeof item.name === "string" ? item.name : isPaddle ? "Pickleball Paddle" : "Pickleball Ball";
+      const unitPrice = typeof item.unitPrice === "number" && item.unitPrice > 0
+        ? item.unitPrice
+        : isPaddle ? 50 : 10;
+
       items.push({
-        id: item.id,
+        id: String(item.id || (isPaddle ? "paddle" : "ball")),
         type: "equipment",
-        ...equipment,
+        name,
+        unitPrice: unitPrice || (isPaddle ? 50 : 10),
         durationHours,
         quantity,
       });
@@ -75,7 +79,6 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
 
     if (item.type === "court" && typeof item.name === "string") {
       const match = /^Court (0[1-9]|1[0-9]|20)$/.exec(item.name);
-      if (!match) return null;
       const date = item.date;
       const startTime = item.startTime;
       if (
@@ -98,8 +101,11 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
       const bookingStart = new Date(`${date}T${startTime}:00+08:00`);
       if (bookingStart.getTime() <= Date.now()) return null;
 
-      const courtNumber = Number(match[1]);
+      const courtNumber = match ? Number(match[1]) : 0;
       const indoorCourts = new Set([1, 2, 5, 7, 10, 12, 14, 16, 18, 20]);
+      const defaultPrice = indoorCourts.has(courtNumber) ? 300 : 250;
+      const unitPrice = typeof item.unitPrice === "number" && item.unitPrice > 0 ? item.unitPrice : defaultPrice;
+
       const bookingEnd = new Date(
         bookingStart.getTime() + durationHours * 60 * 60 * 1000
       );
@@ -109,16 +115,17 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
         minute: "2-digit",
         hourCycle: "h23",
       }).format(bookingEnd);
+
       items.push({
-        id: `court-${match[1]}`,
+        id: String(item.id || (match ? `court-${match[1]}` : item.name)),
         type: "court",
-        name: `Court ${match[1]}`,
+        name: item.name,
         date,
         startTime,
         endTime,
         durationHours,
         quantity,
-        unitPrice: indoorCourts.has(courtNumber) ? 300 : 250,
+        unitPrice,
       });
       continue;
     }

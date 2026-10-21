@@ -1,5 +1,8 @@
+"use client";
+
 import CurrentYear from "./current-year";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth";
 
 const courts = [
   {
@@ -62,6 +65,8 @@ const services = [
 ];
 
 export default function HomePage() {
+  const { user, card, isAdmin, signOut } = useAuth();
+
   return (
     <main>
       <header className="site-header">
@@ -79,12 +84,35 @@ export default function HomePage() {
         </nav>
 
         <div className="header-actions">
-          <a className="login-link" href="/login">
-            Log in
-          </a>
-          <a className="button button-lime button-small" href="/register">
-            Get started <span aria-hidden="true">↗</span>
-          </a>
+          {isAdmin && (
+            <Link className="button button-small" href="/admin" style={{ background: "#059669", color: "#fff" }}>
+              Admin Portal
+            </Link>
+          )}
+          {user ? (
+            <>
+              <span style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                {card?.card_number || user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="login-link"
+                style={{ cursor: "pointer", background: "none", border: "none" }}
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link className="login-link" href="/login">
+                Log in
+              </Link>
+              <Link className="button button-lime button-small" href="/register">
+                Get started <span aria-hidden="true">↗</span>
+              </Link>
+            </>
+          )}
         </div>
       </header>
 

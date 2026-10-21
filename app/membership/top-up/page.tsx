@@ -4,6 +4,7 @@ import { ChangeEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMembershipBalance } from "@/lib/use-membership-balance";
+import { useAuth } from "@/lib/auth";
 
 function formatPHP(amount: number) {
   return new Intl.NumberFormat("en-PH", {
@@ -15,6 +16,7 @@ function formatPHP(amount: number) {
 
 export default function MembershipTopUpPage() {
   const router = useRouter();
+  const { user, card, loading: authLoading } = useAuth();
   const [cardId, setCardId] = useState("");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
@@ -24,6 +26,14 @@ export default function MembershipTopUpPage() {
   const [loading, setLoading] = useState(false);
   const { balance, error: balanceError, loading: balanceLoading } =
     useMembershipBalance(cardId);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login?returnUrl=/membership/top-up");
+    } else if (card?.card_number && !cardId) {
+      setCardId(card.card_number);
+    }
+  }, [authLoading, user, card, cardId, router]);
 
   useEffect(
     () => () => {

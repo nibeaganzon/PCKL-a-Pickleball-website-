@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import CurrentYear from "../current-year";
 import CartIndicator from "@/components/cart-indicator";
 import { readCart, writeCart, type CartItem } from "@/lib/cart";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth";
 
 type Court = {
-  id: number;
+  id: string | number;
   name: string;
   type: "Indoor" | "Outdoor";
   price: number;
@@ -123,6 +125,8 @@ type AvailabilityFilter = "All" | "Available" | "Booked";
 type CourtTypeFilter = "All" | "Indoor" | "Outdoor";
 
 export default function CourtsPage() {
+  const { user, card, isAdmin, signOut } = useAuth();
+  const [courtList, setCourtList] = useState<Court[]>(courts);
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [bookingDate, setBookingDate] = useState("");
   const [bookingStartTime, setBookingStartTime] = useState("");
@@ -135,8 +139,68 @@ export default function CourtsPage() {
     useState<AvailabilityFilter>("All");
   const [courtType, setCourtType] = useState<CourtTypeFilter>("All");
 
+  useEffect(() => {
+    async function loadCourtsFromDatabase() {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data, error } = await supabase
+          .from("courts")
+          .select("id, name, type, price, description, images, is_active")
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          const { data: reservations } = await supabase
+            .from("court_reservations")
+            .select("court_id, start_date, end_date, status")
+            .in("status", ["Active", "Pending"]);
+
+          const bookedCourtIds = new Set(
+            (reservations ?? [])
+              .filter((r) => {
+                const now = Date.now();
+                const start = new Date(r.start_date).getTime();
+                const end = new Date(r.end_date).getTime();
+                return now >= start && now <= end;
+              })
+              .map((r) => r.court_id)
+          );
+
+          const mapped: Court[] = data.map((item) => {
+            const isBooked = bookedCourtIds.has(item.id);
+            const status: "Available" | "Booked" | "Maintenance" = !item.is_active
+              ? "Maintenance"
+              : isBooked
+              ? "Booked"
+              : "Available";
+
+            return {
+              id: item.id,
+              name: item.name,
+              type: item.type === "Outdoor" ? "Outdoor" : "Indoor",
+              price: Number(item.price),
+              status,
+              image:
+                item.images && item.images.length > 0
+                  ? item.images[0]
+                  : item.type === "Outdoor"
+                  ? "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=85"
+                  : "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=900&q=85",
+              description: item.description || "Pickleball court ready for your next game.",
+            };
+          });
+          setCourtList(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to load courts from Supabase:", err);
+      }
+    }
+
+    void loadCourtsFromDatabase();
+  }, []);
+
   const filteredCourts = useMemo(() => {
-    return courts.filter((court) => {
+    return courtList.filter((court) => {
       const matchesSearch = court.name
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -148,9 +212,9 @@ export default function CourtsPage() {
 
       return matchesSearch && matchesAvailability && matchesType;
     });
-  }, [search, availability, courtType]);
+  }, [courtList, search, availability, courtType]);
 
-  const availableCount = courts.filter(
+  const availableCount = courtList.filter(
     (court) => court.status === "Available"
   ).length;
 
@@ -217,12 +281,35 @@ export default function CourtsPage() {
           <Link href="/payment" className="courts-checkout-button">
             Checkout
           </Link>
-          <Link href="/login" className="courts-login">
-            Log in
-          </Link>
-          <Link href="/register" className="courts-register">
-            Join PCKL+ <span>↗</span>
-          </Link>
+          {isAdmin && (
+            <Link href="/admin" className="courts-checkout-button" style={{ background: "#059669" }}>
+              Admin
+            </Link>
+          )}
+          {user ? (
+            <>
+              <span style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                {card?.card_number || user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="courts-login"
+                style={{ cursor: "pointer", background: "none", border: "none" }}
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="courts-login">
+                Log in
+              </Link>
+              <Link href="/register" className="courts-register">
+                Join PCKL+ <span>↗</span>
+              </Link>
+            </>
+          )}
         </div>
       </header>
 

@@ -33,7 +33,10 @@ export type PaymentRecord = {
   reviewed_at: string | null;
 };
 
-export function validatePaymentCart(value: unknown): PaymentItem[] | null {
+export function validatePaymentCart(
+  value: unknown,
+  options: { allowPastBookings?: boolean } = {}
+): PaymentItem[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
     return null;
   }
@@ -96,7 +99,9 @@ export function validatePaymentCart(value: unknown): PaymentItem[] | null {
         return null;
       }
       const bookingStart = new Date(`${date}T${startTime}:00+08:00`);
-      if (bookingStart.getTime() <= Date.now()) return null;
+      if (!options.allowPastBookings && bookingStart.getTime() <= Date.now()) {
+        return null;
+      }
 
       const courtNumber = Number(match[1]);
       const indoorCourts = new Set([1, 2, 5, 7, 10, 12, 14, 16, 18, 20]);

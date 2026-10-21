@@ -5,17 +5,27 @@ export async function GET(
   context: { params: Promise<{ cardId: string }> }
 ) {
   const { cardId } = await context.params;
-  if (!/^PCKL-[0-9A-F]{32}$/i.test(cardId)) {
+  const trimmed = cardId.trim();
+  if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i.test(trimmed)) {
     return Response.json({ message: "Membership card not found." }, { status: 404 });
   }
 
   try {
     const supabase = createSupabaseServiceClient();
-    const { data: card, error } = await supabase
+    const isUuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(trimmed);
+
+    let query = supabase
       .from("membership_cards")
-      .select("card_id, balance")
-      .eq("card_id", cardId.toUpperCase())
-      .maybeSingle();
+      .select("id, card_number, balance, status")
+      .eq("status", "Active");
+
+    if (isUuid) {
+      query = query.eq("id", trimmed);
+    } else {
+      query = query.eq("card_number", trimmed.toUpperCase());
+    }
+
+    const { data: card, error } = await query.maybeSingle();
 
     if (error) throw error;
     if (!card) {
@@ -23,7 +33,7 @@ export async function GET(
     }
 
     return Response.json(
-      { cardId: card.card_id, balance: Number(card.balance) },
+      { cardId: card.card_number || card.id, balance: Number(card.balance) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

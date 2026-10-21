@@ -20,12 +20,30 @@ export default function LoginPage() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (error) throw error;
-      router.push("/admin");
+
+      if (!data.user) {
+        throw new Error("Login failed. Please try again.");
+      }
+
+      // Check if user is an admin
+      const { data: admin } = await supabase
+        .from("admin_members")
+        .select("user_id")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+
+      if (admin) {
+        router.push("/admin");
+      } else {
+        const searchParams = new URLSearchParams(window.location.search);
+        const returnUrl = searchParams.get("returnUrl") || "/";
+        router.push(returnUrl);
+      }
     } catch (error) {
       setMessage(
         error instanceof Error

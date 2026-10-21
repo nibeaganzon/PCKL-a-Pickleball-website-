@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (!/^PCKL-[0-9A-F]{32}$/.test(cardId)) {
+  if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
     return Response.json({ message: "Enter a valid membership card ID." }, { status: 400 });
   }
 

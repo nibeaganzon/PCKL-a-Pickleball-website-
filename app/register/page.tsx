@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import CurrentYear from "../current-year";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function RegisterPage() {
   const [cardholderName, setCardholderName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [membershipCardId, setMembershipCardId] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [registrationError, setRegistrationError] = useState("");
@@ -16,18 +18,49 @@ export default function RegisterPage() {
     event.preventDefault();
     setRegistrationError("");
 
+    if (password.length < 6) {
+      setRegistrationError("Password must be at least 6 characters.");
+      return;
+    }
+
     setRegistering(true);
     try {
-      const response = await fetch("/api/membership-cards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: cardholderName.trim(), email: email.trim() }),
+      const supabase = createSupabaseBrowserClient();
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: cardholderName.trim(),
+          },
+        },
       });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || "Your membership card could not be created.");
+
+      if (signUpError) throw signUpError;
+      if (!signUpData.user) {
+        throw new Error("Unable to create account. Please try again.");
       }
-      setMembershipCardId(result.cardId);
+
+      // Query the automatically provisioned membership card
+      let retrievedCardId = "";
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: card } = await supabase
+          .from("membership_cards")
+          .select("card_number, id")
+          .eq("user_id", signUpData.user.id)
+          .eq("status", "Active")
+          .order("issued_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (card?.card_number) {
+          retrievedCardId = card.card_number;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      setMembershipCardId(retrievedCardId || `PICKL-${signUpData.user.id.slice(0, 16).toUpperCase()}`);
     } catch (error) {
       setRegistrationError(
         error instanceof Error
@@ -273,6 +306,21 @@ export default function RegisterPage() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
+
+            <div className="register-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Create a password (min 6 characters)"
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
                 required
               />
             </div>

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     const cardId = cardIdValue.trim().toUpperCase();
     const reference = referenceValue.trim();
-    if (!/^PCKL-[0-9A-F]{32}$/.test(cardId)) {
+    if (!/^(?:P[C|I]KL-[A-Z0-9]{8,32}|[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12})$/i.test(cardId)) {
       return Response.json({ message: "Enter a valid membership card ID." }, { status: 400 });
     }
     if (!amountPattern.test(amountValue)) {
@@ -53,19 +53,8 @@ export async function POST(request: Request) {
     }
 
     supabase = createSupabaseServiceClient();
-    const { data: card, error: cardError } = await supabase
-      .from("membership_cards")
-      .select("cardholder_name, cardholder_email")
-      .eq("card_id", cardId)
-      .maybeSingle();
-
-    if (cardError) throw cardError;
-    if (!card) {
-      return Response.json({ message: "Membership card not found." }, { status: 404 });
-    }
 
     const paymentId = crypto.randomUUID();
-    const orderReference = `PAY-${paymentId.replaceAll("-", "").slice(0, 20).toUpperCase()}`;
     const extension =
       proof.type === "image/jpeg" ? "jpg" : proof.type === "image/png" ? "png" : "webp";
     proofPath = `${paymentId}/receipt.${extension}`;
@@ -81,35 +70,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error: insertError } = await supabase.from("payments").insert({
-      id: paymentId,
-      order_reference: orderReference,
-      customer_name: card.cardholder_name,
-      customer_email: card.cardholder_email,
-      payment_reference: reference,
-      cart: [],
-      amount,
-      proof_path: proofPath,
-      payment_type: "top_up",
-      payment_method: "external",
-      membership_card_id: cardId,
+    const { data: topupResult, error: topupError } = await supabase.rpc("automatic_topup", {
+      p_card_id: cardId,
+      p_amount: amount,
+      p_payment_method: "Online",
+      p_proof_path: proofPath,
     });
 
-    if (insertError) {
-      console.error("Top-up payment record creation failed:", insertError);
-      const { error: cleanupError } = await supabase.storage
-        .from("payment-proofs")
-        .remove([proofPath]);
-      if (cleanupError) console.error("Orphaned top-up receipt cleanup failed:", cleanupError);
-      proofPath = undefined;
+    if (topupError) {
+      console.error("Top-up RPC execution failed:", topupError);
+      if (topupError.message.includes("CARD_NOT_FOUND")) {
+        return Response.json({ message: "Active membership card not found." }, { status: 404 });
+      }
       return Response.json(
-        { message: "Your top-up could not be submitted. Please try again." },
-        { status: 502 }
+        { message: "Your top-up could not be processed. Please try again." },
+        { status: 500 }
       );
     }
 
+    const orderReference = topupResult?.order_reference || `TOP-${paymentId.slice(0, 8).toUpperCase()}`;
     proofPath = undefined;
-    return Response.json({ orderReference }, { status: 201 });
+    return Response.json({ orderReference, balanceAfter: topupResult?.balance_after }, { status: 201 });
   } catch (error) {
     console.error("Top-up request failed:", error);
     if (proofPath && supabase) {

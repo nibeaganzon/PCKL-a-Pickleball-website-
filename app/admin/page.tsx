@@ -14,7 +14,6 @@ import type { PaymentItem, PaymentRecord, PaymentStatus } from "@/lib/payments";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useInventory } from "@/lib/use-inventory";
 import type { InventoryItem } from "@/lib/inventory";
-import { saveLocalInventoryImage } from "@/lib/local-inventory-images";
 
 type Activity = {
   id: string;
@@ -495,7 +494,7 @@ export default function AdminDashboardPage() {
       quantity: item?.kind === "equipment" ? String(item.quantity) : "0",
       courtType: item?.kind === "court" ? item.courtType : "Indoor",
       status: item?.kind === "court" ? item.status : "Available",
-      image: item?.sourceImage ?? item?.image ?? "",
+      image: item?.image ?? "",
     });
     setInventoryImagePreview(item?.image ?? "");
     setPendingInventoryImage(null);
@@ -527,16 +526,41 @@ export default function AdminDashboardPage() {
     event.preventDefault();
     if (!inventoryDraft) return;
 
-    const payload = {
-      ...inventoryDraft,
-      price: Number(inventoryDraft.price),
-      ...(inventoryDraft.kind === "equipment"
-        ? { quantity: Number(inventoryDraft.quantity) }
-        : {}),
-    };
     setSavingInventory(true);
     setError("");
     try {
+      let imageUrl = inventoryDraft.image;
+
+      if (pendingInventoryImage) {
+        const formData = new FormData();
+        formData.append("file", pendingInventoryImage);
+        formData.append("kind", inventoryDraft.kind);
+        if (inventoryDraft.id) {
+          formData.append("itemId", inventoryDraft.id);
+        }
+
+        const uploadResponse = await fetch("/api/admin/inventory/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          throw new Error(
+            uploadResult.message || "The image could not be saved to storage."
+          );
+        }
+        imageUrl = uploadResult.url;
+      }
+
+      const payload = {
+        ...inventoryDraft,
+        image: imageUrl,
+        price: Number(inventoryDraft.price),
+        ...(inventoryDraft.kind === "equipment"
+          ? { quantity: Number(inventoryDraft.quantity) }
+          : {}),
+      };
+
       const response = await fetch(
         inventoryDraft.id
           ? `/api/admin/inventory/${inventoryDraft.id}`
@@ -550,36 +574,6 @@ export default function AdminDashboardPage() {
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.message || "Inventory could not be saved.");
-      }
-
-      if (pendingInventoryImage) {
-        const savedItemId = inventoryDraft.id ?? result.id;
-        if (typeof savedItemId !== "string") {
-          throw new Error(
-            "Inventory was saved, but its image could not be associated with the item."
-          );
-        }
-        try {
-          await saveLocalInventoryImage(
-            inventoryDraft.kind,
-            savedItemId,
-            pendingInventoryImage
-          );
-        } catch (imageSaveError) {
-          setNotice(result.message);
-          setError(
-            `Inventory was saved, but the image could not be saved in this browser. ${
-              imageSaveError instanceof Error
-                ? imageSaveError.message
-                : "Please try a smaller image."
-            }`
-          );
-          setInventoryDraft(null);
-          setInventoryImagePreview("");
-          setPendingInventoryImage(null);
-          await refreshInventory();
-          return;
-        }
       }
 
       setNotice(result.message);
@@ -1224,8 +1218,7 @@ export default function AdminDashboardPage() {
                   />
                   <p>
                     Picture files only (JPG, PNG, GIF, WebP, and other image
-                    formats), up to 10 MB. Saved images display in this browser
-                    only.
+                    formats), up to 10 MB.
                   </p>
                   {inventoryImageError && (
                     <p className="admin-error" role="alert">

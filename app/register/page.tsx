@@ -27,7 +27,7 @@ export default function RegisterPage() {
     try {
       const supabase = createSupabaseBrowserClient();
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
         options: {
           data: {

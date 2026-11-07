@@ -111,6 +111,13 @@ export async function DELETE(
     const kind = (body as { kind: "court" | "equipment" }).kind;
     const supabase = createSupabaseServiceClient();
     const table = kind === "court" ? "courts" : "equipments";
+
+    const { data: itemData } = await supabase
+      .from(table)
+      .select("images")
+      .eq("id", itemId)
+      .maybeSingle();
+
     const { error } = await supabase.from(table).delete().eq("id", itemId);
     if (error) {
       if (error.code === "23503") {
@@ -120,6 +127,18 @@ export async function DELETE(
         );
       }
       throw error;
+    }
+
+    if (itemData?.images && Array.isArray(itemData.images)) {
+      const storagePrefix = "/storage/v1/object/public/inventory/";
+      const pathsToDelete = itemData.images
+        .filter((url: string) => typeof url === "string" && url.includes(storagePrefix))
+        .map((url: string) => url.split(storagePrefix)[1])
+        .filter(Boolean);
+
+      if (pathsToDelete.length > 0) {
+        await supabase.storage.from("inventory").remove(pathsToDelete);
+      }
     }
 
     return Response.json({ message: "Inventory item deleted." });

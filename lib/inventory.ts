@@ -10,6 +10,7 @@ export type CourtInventoryItem = {
   status: CourtStatus;
   price: number;
   image: string;
+  sourceImage?: string;
 };
 
 export type EquipmentInventoryItem = {
@@ -20,6 +21,7 @@ export type EquipmentInventoryItem = {
   price: number;
   quantity: number;
   image: string;
+  sourceImage?: string;
 };
 
 export type InventoryItem = CourtInventoryItem | EquipmentInventoryItem;

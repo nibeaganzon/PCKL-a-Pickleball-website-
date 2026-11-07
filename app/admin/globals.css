@@ -1041,6 +1041,71 @@
   justify-content: flex-end;
 }
 
+.admin-inventory-image-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-inventory-image-field > label {
+  color: var(--admin-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-inventory-image-field > p {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.admin-inventory-image-preview {
+  display: grid;
+  min-height: 140px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px dashed var(--admin-border);
+  border-radius: 6px;
+  background: #fafbfc;
+  color: var(--admin-muted);
+  font-size: 10px;
+}
+
+.admin-inventory-image-preview img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.admin-inventory-card-info {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-inventory-card-image {
+  width: 68px;
+  height: 58px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  background: #f0f2f6;
+  object-fit: cover;
+}
+
+.admin-inventory-card-image-empty {
+  display: grid;
+  place-items: center;
+  color: var(--admin-muted);
+  font-size: 8px;
+}
+
+.admin-inventory-card-info > div {
+  min-width: 0;
+}
+
 /* Activity */
 
 .admin-activity-panel {

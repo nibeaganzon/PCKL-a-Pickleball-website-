@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PaymentItem, PaymentRecord, PaymentStatus } from "@/lib/payments";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useInventory } from "@/lib/use-inventory";
 import type { InventoryItem } from "@/lib/inventory";
+import { saveLocalInventoryImage } from "@/lib/local-inventory-images";
 
 type Activity = {
   id: string;
@@ -118,6 +126,18 @@ export default function AdminDashboardPage() {
   const [inventoryDraft, setInventoryDraft] =
     useState<InventoryDraft | null>(null);
   const [savingInventory, setSavingInventory] = useState(false);
+  const [inventoryImagePreview, setInventoryImagePreview] = useState("");
+  const [pendingInventoryImage, setPendingInventoryImage] = useState<File | null>(
+    null
+  );
+  const [inventoryImageError, setInventoryImageError] = useState("");
+
+  useEffect(() => {
+    if (!pendingInventoryImage || !inventoryImagePreview.startsWith("blob:")) {
+      return;
+    }
+    return () => URL.revokeObjectURL(inventoryImagePreview);
+  }, [inventoryImagePreview, pendingInventoryImage]);
 
   const loadPayments = useCallback(async () => {
     try {
@@ -475,9 +495,32 @@ export default function AdminDashboardPage() {
       quantity: item?.kind === "equipment" ? String(item.quantity) : "0",
       courtType: item?.kind === "court" ? item.courtType : "Indoor",
       status: item?.kind === "court" ? item.status : "Available",
-      image: item?.image ?? "",
+      image: item?.sourceImage ?? item?.image ?? "",
     });
+    setInventoryImagePreview(item?.image ?? "");
+    setPendingInventoryImage(null);
+    setInventoryImageError("");
     setError("");
+  }
+
+  function handleInventoryImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setInventoryImageError("");
+
+    if (!file.type.startsWith("image/")) {
+      setInventoryImageError("Choose a valid picture file.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setInventoryImageError("Choose an image smaller than 10 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setInventoryImagePreview(URL.createObjectURL(file));
+    setPendingInventoryImage(file);
   }
 
   async function saveInventoryItem(event: FormEvent<HTMLFormElement>) {
@@ -508,8 +551,42 @@ export default function AdminDashboardPage() {
       if (!response.ok) {
         throw new Error(result.message || "Inventory could not be saved.");
       }
+
+      if (pendingInventoryImage) {
+        const savedItemId = inventoryDraft.id ?? result.id;
+        if (typeof savedItemId !== "string") {
+          throw new Error(
+            "Inventory was saved, but its image could not be associated with the item."
+          );
+        }
+        try {
+          await saveLocalInventoryImage(
+            inventoryDraft.kind,
+            savedItemId,
+            pendingInventoryImage
+          );
+        } catch (imageSaveError) {
+          setNotice(result.message);
+          setError(
+            `Inventory was saved, but the image could not be saved in this browser. ${
+              imageSaveError instanceof Error
+                ? imageSaveError.message
+                : "Please try a smaller image."
+            }`
+          );
+          setInventoryDraft(null);
+          setInventoryImagePreview("");
+          setPendingInventoryImage(null);
+          await refreshInventory();
+          return;
+        }
+      }
+
       setNotice(result.message);
       setInventoryDraft(null);
+      setInventoryImagePreview("");
+      setPendingInventoryImage(null);
+      setInventoryImageError("");
       await refreshInventory();
     } catch (saveError) {
       setError(
@@ -1136,19 +1213,36 @@ export default function AdminDashboardPage() {
                     }
                   />
                 </label>
-                <label>
-                  Image URL
+                <div className="admin-inventory-image-field">
+                  <label htmlFor="inventory-image-file">Item image</label>
                   <input
-                    type="url"
-                    value={inventoryDraft.image}
-                    onChange={(event) =>
-                      setInventoryDraft({
-                        ...inventoryDraft,
-                        image: event.target.value,
-                      })
-                    }
+                    id="inventory-image-file"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleInventoryImageChange}
+                    disabled={savingInventory}
                   />
-                </label>
+                  <p>
+                    Picture files only (JPG, PNG, GIF, WebP, and other image
+                    formats), up to 10 MB. Saved images display in this browser
+                    only.
+                  </p>
+                  {inventoryImageError && (
+                    <p className="admin-error" role="alert">
+                      {inventoryImageError}
+                    </p>
+                  )}
+                  <div className="admin-inventory-image-preview">
+                    {inventoryImagePreview ? (
+                      <img
+                        src={inventoryImagePreview}
+                        alt={`${inventoryDraft.name || "Inventory item"} preview`}
+                      />
+                    ) : (
+                      <span>No picture selected</span>
+                    )}
+                  </div>
+                </div>
                 <div className="admin-inventory-form-actions">
                   <button
                     type="submit"
@@ -1164,7 +1258,19 @@ export default function AdminDashboardPage() {
             <div className="admin-inventory-grid">
               {[...inventoryCourts, ...inventoryEquipment].map((item) => (
                 <article className="admin-inventory-card" key={`${item.kind}-${item.id}`}>
-                  <div>
+                  <div className="admin-inventory-card-info">
+                    {item.image ? (
+                      <img
+                        className="admin-inventory-card-image"
+                        src={item.image}
+                        alt={`${item.name} current picture`}
+                      />
+                    ) : (
+                      <div className="admin-inventory-card-image admin-inventory-card-image-empty">
+                        No picture
+                      </div>
+                    )}
+                    <div>
                     <span className="admin-inventory-kind">
                       {item.kind === "court"
                         ? `${item.courtType} court · ${item.status}`
@@ -1173,6 +1279,7 @@ export default function AdminDashboardPage() {
                     <h3>{item.name}</h3>
                     <p>{item.description || "No description provided."}</p>
                     <strong>{formatPeso(item.price)} / hour</strong>
+                    </div>
                   </div>
                   <div className="admin-booking-actions">
                     <button

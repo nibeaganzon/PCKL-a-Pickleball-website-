@@ -216,7 +216,7 @@ img {
 .hero-photo {
   position: absolute;
   inset: 0;
-  background-image: url("https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=2000&q=90");
+  background-image: url("/images/bg.jpeg");
   background-position: center 47%;
   background-size: cover;
   transform: scale(1.01);
@@ -1062,7 +1062,7 @@ img {
 
 .location-photo {
   min-height: 420px;
-  background-image: url("https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=1200&q=85");
+  background-image: url("/images/seeuoncourt.jpeg");
   background-position: center;
   background-size: cover;
 }

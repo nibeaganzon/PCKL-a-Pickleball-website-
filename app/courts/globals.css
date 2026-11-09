@@ -275,7 +275,7 @@
   overflow: hidden;
   border-radius: 10px;
   background-color: var(--pckl-navy);
-  background-image: url("https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=1200&q=90");
+  background-image: url("/images/bg.jpeg");
   background-position: center;
   background-size: cover;
 }

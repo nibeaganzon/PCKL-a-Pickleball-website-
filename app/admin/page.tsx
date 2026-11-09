@@ -252,7 +252,11 @@ export default function AdminDashboardPage() {
     setError("");
 
     try {
-      const response = await fetch(`/api/admin/payments/${payment.id}`, {
+      const endpoint =
+        payment.payment_type === "top_up"
+          ? `/api/admin/top-ups/${payment.id}`
+          : `/api/admin/payments/${payment.id}`;
+      const response = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

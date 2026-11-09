@@ -50,13 +50,38 @@ export async function GET(request: Request) {
 
     if (transError) throw transError;
 
+    // Load pending topups
+    const { data: topups, error: topupsError } = await supabase
+      .from("topups")
+      .select(`
+        id,
+        order_reference,
+        amount,
+        topup_date,
+        reviewed_at,
+        proof_path,
+        card_id,
+        membership_cards (
+          card_number,
+          user_id
+        )
+      `)
+      .eq("status", "Pending")
+      .order("topup_date", { ascending: false })
+      .limit(100);
+
+    if (topupsError) throw topupsError;
+
     // Load auth user emails for membership cards
     const userIds = Array.from(
-      new Set(
-        (transactions ?? [])
+      new Set([
+        ...(transactions ?? [])
           .map((t) => (t.membership_cards as unknown as { user_id: string })?.user_id)
-          .filter(Boolean)
-      )
+          .filter(Boolean),
+        ...(topups ?? [])
+          .map((t) => (t.membership_cards as unknown as { user_id: string })?.user_id)
+          .filter(Boolean),
+      ])
     );
 
     const emailMap = new Map<string, string>();
@@ -67,7 +92,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const payments = (transactions ?? []).map((trans) => {
+    const orderPayments = (transactions ?? []).map((trans) => {
       const cardInfo = trans.membership_cards as unknown as { card_number: string; user_id: string } | null;
       const userEmail = cardInfo?.user_id ? emailMap.get(cardInfo.user_id) || "member@pckl.ph" : "member@pckl.ph";
       const reservations = (trans.court_reservations as unknown as Array<{
@@ -125,6 +150,44 @@ export async function GET(request: Request) {
         reviewed_at: trans.reviewed_at,
       };
     });
+
+    const topupPayments = await Promise.all(
+      (topups ?? []).map(async (topup) => {
+        const cardInfo = topup.membership_cards as unknown as { card_number: string; user_id: string } | null;
+        const userEmail = cardInfo?.user_id ? emailMap.get(cardInfo.user_id) || "member@pckl.ph" : "member@pckl.ph";
+
+        let proofUrl: string | undefined;
+        if (topup.proof_path) {
+          const { data: signedData } = await supabase.storage
+            .from("payment-proofs")
+            .createSignedUrl(topup.proof_path, 3600);
+          proofUrl = signedData?.signedUrl;
+        }
+
+        return {
+          id: topup.id,
+          order_reference: topup.order_reference,
+          customer_name: "PCKL Member",
+          customer_email: userEmail,
+          payment_reference: topup.order_reference,
+          cart: [],
+          amount: Number(topup.amount),
+          proof_path: topup.proof_path,
+          proof_url: proofUrl || "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85",
+          status: "pending" as const,
+          payment_type: "top_up" as const,
+          payment_method: "external" as const,
+          membership_card_id: cardInfo?.card_number || topup.card_id,
+          balance_after: null,
+          created_at: topup.topup_date,
+          reviewed_at: topup.reviewed_at,
+        };
+      })
+    );
+
+    const payments = [...orderPayments, ...topupPayments].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
 
     return Response.json(
       { payments, adminEmail: authorization.user.email },

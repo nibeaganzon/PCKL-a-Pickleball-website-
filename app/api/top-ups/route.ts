@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: topupResult, error: topupError } = await supabase.rpc("automatic_topup", {
+    const { data: topupResult, error: topupError } = await supabase.rpc("submit_topup", {
       p_card_id: cardId,
       p_amount: amount,
       p_payment_method: "Online",
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
     const orderReference = topupResult?.order_reference || `TOP-${paymentId.slice(0, 8).toUpperCase()}`;
     proofPath = undefined;
-    return Response.json({ orderReference, balanceAfter: topupResult?.balance_after }, { status: 201 });
+    return Response.json({ orderReference, status: "pending" }, { status: 201 });
   } catch (error) {
     console.error("Top-up request failed:", error);
     if (proofPath && supabase) {

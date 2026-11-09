@@ -16,8 +16,12 @@ _Avoid_: Card ID, account number
 The latest active membership card assigned to a user, enforced by a partial unique database index.
 _Avoid_: Primary card, current wallet
 
+**Pending Top-Up**:
+A submitted request to credit funds to an active membership card accompanied by payment proof, awaiting administrator review and approval.
+_Avoid_: Unverified top-up, pending deposit, top-up draft
+
 **Top-Up**:
-An immediate credit of funds to a user's own active membership card, requiring a receipt upload on the client for user feedback while processing automatically in the database.
+A credit of funds applied to an active membership card once an administrator reviews and approves the submitted payment proof.
 _Avoid_: Deposit, reload, payment submission, peer transfer
 
 **Pending Booking**:

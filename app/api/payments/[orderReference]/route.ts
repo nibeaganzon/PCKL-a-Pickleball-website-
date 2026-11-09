@@ -112,8 +112,10 @@ export async function GET(
       .select(`
         id,
         order_reference,
+        status,
         amount,
         topup_date,
+        reviewed_at,
         card_id,
         membership_cards (
           card_number
@@ -126,13 +128,14 @@ export async function GET(
 
     if (topup) {
       const cardRef = (topup.membership_cards as unknown as { card_number: string })?.card_number || topup.card_id;
+      const topupStatus = (topup.status || "Pending").toLowerCase();
       return Response.json(
         {
           payment: {
             order_reference: topup.order_reference,
-            status: "confirmed",
+            status: topupStatus,
             created_at: topup.topup_date,
-            reviewed_at: topup.topup_date,
+            reviewed_at: topup.reviewed_at,
             cart: [],
             amount: Number(topup.amount),
             payment_type: "top_up",

@@ -37,13 +37,14 @@ export default function SubmittedPaymentPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    debugger;
     let active = true;
     let intervalId: number | undefined;
     const timerId = window.setTimeout(() => {
       const orderReference = new URLSearchParams(window.location.search).get(
         "reference"
       );
-      if (!orderReference || !/^PAY-[0-9A-F]{20}$/.test(orderReference)) {
+      if (!orderReference || !(/^TOP-[0-9A-F]{16}$/.test(orderReference) || /^PAY-[0-9A-F]{20}$/.test(orderReference))) {
         setError("The order reference is missing or invalid.");
         setLoading(false);
         return;

@@ -23,16 +23,41 @@ type Activity = {
   type: "confirmed" | "rejected";
 };
 
-type PaymentTab = "all" | "courts" | "equipment" | "top-ups";
-
 type BookingRecord = {
   paymentId: string;
   orderReference: string;
   customerName: string;
   customerEmail: string;
-  amount: number;
   itemIndex: number;
   item: PaymentItem;
+  status: string;
+  historyAt: string;
+};
+
+type TransactionHistoryRow = {
+  id: string;
+  order_reference: string | null;
+  status: string | null;
+  total_amount: number | string | null;
+  transaction_date: string;
+  membership_cards: { card_number: string | null } | null;
+  court_reservations: Array<{
+    id: string;
+    amount: number | string;
+    start_date: string;
+    end_date: string;
+    status: string | null;
+    courts: { id: string; name: string } | null;
+  }> | null;
+  equipment_rentals: Array<{
+    id: string;
+    quantity: number;
+    unit_price: number | string;
+    start_date: string;
+    end_date: string;
+    status: string | null;
+    equipments: { id: string; name: string } | null;
+  }> | null;
 };
 
 type BookingDraft = {
@@ -74,11 +99,48 @@ function formatDate(value: string) {
   });
 }
 
+function formatBookingDate(value: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatBookingTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+}
+
+function getBookingDuration(start: string, end: string) {
+  const duration = (Date.parse(end) - Date.parse(start)) / (60 * 60 * 1000);
+  return Number.isFinite(duration) && duration > 0
+    ? Math.max(1, Math.round(duration))
+    : 1;
+}
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`admin-status admin-status-${status}`}>
       <span className="admin-status-dot" />
       {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+function BookingStatusBadge({ status }: { status: string }) {
+  const className = status.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  return (
+    <span className={`admin-status admin-status-${className}`}>
+      <span className="admin-status-dot" />
+      {status}
     </span>
   );
 }
@@ -112,15 +174,15 @@ export default function AdminDashboardPage() {
   );
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<PaymentTab>("all");
   const [selectedPayment, setSelectedPayment] =
     useState<PaymentRecord | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
-  const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
-  const [editingBooking, setEditingBooking] =
+  const [bookingError, setBookingError] = useState("");
+  const [selectedBooking, setSelectedBooking] =
     useState<BookingRecord | null>(null);
+  const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
   const [savingBooking, setSavingBooking] = useState(false);
   const [inventoryDraft, setInventoryDraft] =
     useState<InventoryDraft | null>(null);
@@ -174,19 +236,167 @@ export default function AdminDashboardPage() {
 
   const loadBookings = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/bookings", { cache: "no-store" });
-      const result = await response.json();
+      const supabase = createSupabaseBrowserClient();
+      const historyRows: TransactionHistoryRow[] = [];
+      const pageSize = 500;
 
-      if (!response.ok) {
-        throw new Error(result.message || "Pending bookings could not be loaded.");
+      for (let from = 0; ; from += pageSize) {
+        const { data, error: historyError } = await supabase
+          .from("transactions")
+          .select(`
+            id,
+            order_reference,
+            status,
+            total_amount,
+            transaction_date,
+            membership_cards (card_number),
+            court_reservations (
+              id,
+              amount,
+              start_date,
+              end_date,
+              status,
+              courts (id, name)
+            ),
+            equipment_rentals (
+              id,
+              quantity,
+              unit_price,
+              start_date,
+              end_date,
+              status,
+              equipments (id, name)
+            )
+          `)
+          .order("transaction_date", { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (historyError) throw historyError;
+
+        const pageRows = (data ?? []) as unknown as TransactionHistoryRow[];
+        historyRows.push(...pageRows);
+        if (pageRows.length < pageSize) break;
       }
 
-      setBookings(result.bookings);
+      let pendingRecords: BookingRecord[] = [];
+      let pendingLoadError = "";
+      try {
+        const response = await fetch("/api/admin/bookings", {
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            result.message || "Pending bookings could not be loaded."
+          );
+        }
+
+        const pendingBookings = result.bookings as Omit<
+          BookingRecord,
+          "status" | "historyAt"
+        >[];
+        pendingRecords = pendingBookings.map((booking) => ({
+          ...booking,
+          status: "Pending",
+          historyAt:
+            booking.item.date && booking.item.startTime
+              ? `${booking.item.date}T${booking.item.startTime}:00+08:00`
+              : new Date().toISOString(),
+        }));
+      } catch (pendingError) {
+        pendingLoadError =
+          pendingError instanceof Error
+            ? pendingError.message
+            : "Pending bookings could not be loaded.";
+      }
+
+      const transactionRecords = historyRows.flatMap((transaction) => {
+        const customerEmail = transaction.membership_cards?.card_number
+          ? `Card ${transaction.membership_cards.card_number}`
+          : "Card ID unavailable";
+        const baseRecord = {
+          paymentId: transaction.id,
+          orderReference: transaction.order_reference ?? transaction.id,
+          customerName: "PCKL Member",
+          customerEmail,
+        };
+        let itemIndex = 0;
+
+        const courtRecords = (transaction.court_reservations ?? []).map(
+          (reservation): BookingRecord => {
+            const durationHours = getBookingDuration(
+              reservation.start_date,
+              reservation.end_date
+            );
+            const record: BookingRecord = {
+              ...baseRecord,
+              itemIndex: itemIndex++,
+              status: reservation.status ?? transaction.status ?? "Pending",
+              historyAt: reservation.start_date,
+              item: {
+                id: reservation.courts?.id ?? reservation.id,
+                type: "court",
+                name: reservation.courts?.name ?? "Court",
+                date: formatBookingDate(reservation.start_date),
+                startTime: formatBookingTime(reservation.start_date),
+                endTime: formatBookingTime(reservation.end_date),
+                durationHours,
+                quantity: 1,
+                unitPrice: Number(reservation.amount) / durationHours,
+              },
+            };
+            return record;
+          }
+        );
+
+        const equipmentRecords = (transaction.equipment_rentals ?? []).map(
+          (rental): BookingRecord => {
+            const durationHours = getBookingDuration(
+              rental.start_date,
+              rental.end_date
+            );
+            return {
+              ...baseRecord,
+              itemIndex: itemIndex++,
+              status: rental.status ?? transaction.status ?? "Pending",
+              historyAt: rental.start_date,
+              item: {
+                id: rental.equipments?.id ?? rental.id,
+                type: "equipment",
+                name: rental.equipments?.name ?? "Equipment",
+                date: formatBookingDate(rental.start_date),
+                startTime: formatBookingTime(rental.start_date),
+                endTime: formatBookingTime(rental.end_date),
+                durationHours,
+                quantity: rental.quantity,
+                unitPrice: Number(rental.unit_price),
+              },
+            };
+          }
+        );
+
+        return [...courtRecords, ...equipmentRecords];
+      });
+
+      const recordsByItem = new Map<string, BookingRecord>();
+      for (const booking of [...pendingRecords, ...transactionRecords]) {
+        recordsByItem.set(
+          `${booking.paymentId}-${booking.itemIndex}`,
+          booking
+        );
+      }
+      setBookings(
+        Array.from(recordsByItem.values()).sort(
+          (left, right) =>
+            Date.parse(right.historyAt) - Date.parse(left.historyAt)
+        )
+      );
+      setBookingError(pendingLoadError);
     } catch (loadError) {
-      setError(
+      setBookingError(
         loadError instanceof Error
           ? loadError.message
-          : "Pending bookings could not be loaded."
+          : "Booking history could not be loaded."
       );
     } finally {
       setLoadingBookings(false);
@@ -200,18 +410,14 @@ export default function AdminDashboardPage() {
     return () => window.clearTimeout(loadTimer);
   }, [loadBookings, loadPayments]);
 
-  const visiblePayments = useMemo(() => {
+  const topUpPayments = useMemo(
+    () => payments.filter((payment) => payment.payment_type === "top_up"),
+    [payments]
+  );
+
+  const visibleTopUps = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return payments.filter((payment) => {
-      const matchesTab =
-        tab === "all" ||
-        (tab === "top-ups"
-          ? payment.payment_type === "top_up"
-          : payment.cart.some((item) =>
-              tab === "courts"
-                ? item.type === "court"
-                : item.type === "equipment"
-            ));
+    return topUpPayments.filter((payment) => {
       const matchesSearch =
         !query ||
         [
@@ -222,26 +428,25 @@ export default function AdminDashboardPage() {
           payment.membership_card_id ?? "",
           describeItems(payment.cart),
         ].some((value) => value.toLowerCase().includes(query));
-      return matchesTab && matchesSearch;
+      return matchesSearch;
     });
-  }, [payments, search, tab]);
+  }, [topUpPayments, search]);
 
-  const queueSummary = useMemo(
+  const pendingTopUpAmount = useMemo(
+    () => topUpPayments.reduce((amount, payment) => amount + payment.amount, 0),
+    [topUpPayments]
+  );
+
+  const historySummary = useMemo(
     () =>
-      payments.reduce(
-        (summary, payment) => {
-          summary.amount += payment.amount;
-          summary.courts += payment.cart.filter(
-            (item) => item.type === "court"
-          ).length;
-          summary.equipment += payment.cart.filter(
-            (item) => item.type === "equipment"
-          ).length;
+      bookings.reduce(
+        (summary, booking) => {
+          summary[booking.item.type] += 1;
           return summary;
         },
-        { amount: 0, courts: 0, equipment: 0 }
+        { court: 0, equipment: 0 }
       ),
-    [payments]
+    [bookings]
   );
 
   async function reviewPayment(
@@ -252,11 +457,10 @@ export default function AdminDashboardPage() {
     setError("");
 
     try {
-      const endpoint =
-        payment.payment_type === "top_up"
-          ? `/api/admin/top-ups/${payment.id}`
-          : `/api/admin/payments/${payment.id}`;
-      const response = await fetch(endpoint, {
+      if (payment.payment_type !== "top_up") {
+        throw new Error("Only membership top-ups can be reviewed.");
+      }
+      const response = await fetch(`/api/admin/top-ups/${payment.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -270,7 +474,6 @@ export default function AdminDashboardPage() {
       setPayments((current) =>
         current.filter((item) => item.id !== payment.id)
       );
-      void loadBookings();
       setActivity((current) => [
         {
           id: payment.id,
@@ -297,17 +500,16 @@ export default function AdminDashboardPage() {
     }
   }
 
-  function openBookingEditor(booking?: BookingRecord) {
+  function openBookingEditor() {
     const firstPendingOrder = payments.find(
       (payment) =>
         payment.status === "pending" && payment.payment_type === "order"
     );
-    if (!booking && !firstPendingOrder) {
+    if (!firstPendingOrder) {
       setError("A pending customer order is required before adding a booking.");
       return;
     }
 
-    setEditingBooking(booking ?? null);
     const nextStartParts = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Manila",
       year: "numeric",
@@ -326,30 +528,16 @@ export default function AdminDashboardPage() {
       inventoryCourts.find((court) => court.status === "Available") ??
       inventoryCourts[0];
     const defaultEquipment = inventoryEquipment[0];
-    const selectedCourt =
-      booking?.item.type === "court"
-        ? inventoryCourts.find(
-            (court) =>
-              court.id === booking.item.id || court.name === booking.item.name
-          )
-        : undefined;
-    const selectedEquipment =
-      booking?.item.type === "equipment"
-        ? inventoryEquipment.find(
-            (item) =>
-              item.id === booking.item.id || item.name === booking.item.name
-          )
-        : undefined;
     setBookingDraft({
-      paymentId: booking?.paymentId ?? firstPendingOrder?.id ?? "",
-      type: booking?.item.type ?? "court",
-      courtId: selectedCourt?.id ?? defaultCourt?.id ?? "",
-      equipmentId: selectedEquipment?.id ?? defaultEquipment?.id ?? "",
-      date: booking?.item.date ?? minimumDate,
-      startTime: booking?.item.startTime ?? defaultStartTime,
-      durationHours: booking?.item.durationHours ?? 1,
-      quantity: booking?.item.quantity ?? 1,
-      minimumDate: booking?.item.date ?? minimumDate,
+      paymentId: firstPendingOrder?.id ?? "",
+      type: "court",
+      courtId: defaultCourt?.id ?? "",
+      equipmentId: defaultEquipment?.id ?? "",
+      date: minimumDate,
+      startTime: defaultStartTime,
+      durationHours: 1,
+      quantity: 1,
+      minimumDate,
     });
     setError("");
   }
@@ -357,7 +545,6 @@ export default function AdminDashboardPage() {
   function closeBookingEditor() {
     if (savingBooking) return;
     setBookingDraft(null);
-    setEditingBooking(null);
   }
 
   async function saveBooking(event: FormEvent<HTMLFormElement>) {
@@ -372,8 +559,7 @@ export default function AdminDashboardPage() {
     );
     if (
       bookingDraft.type === "court" &&
-      selectedCourt?.status !== "Available" &&
-      selectedCourt?.name !== editingBooking?.item.name
+      selectedCourt?.status !== "Available"
     ) {
       setError("Choose a court that is currently available.");
       return;
@@ -421,17 +607,11 @@ export default function AdminDashboardPage() {
     setError("");
     try {
       const response = await fetch(
-        editingBooking
-          ? `/api/admin/bookings/${editingBooking.paymentId}`
-          : "/api/admin/bookings",
+        "/api/admin/bookings",
         {
-          method: editingBooking ? "PATCH" : "POST",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            editingBooking
-              ? { itemIndex: editingBooking.itemIndex, item }
-              : { paymentId: bookingDraft.paymentId, item }
-          ),
+          body: JSON.stringify({ paymentId: bookingDraft.paymentId, item }),
         }
       );
       const result = await response.json();
@@ -441,7 +621,6 @@ export default function AdminDashboardPage() {
 
       setNotice(result.message);
       setBookingDraft(null);
-      setEditingBooking(null);
       await Promise.all([loadBookings(), loadPayments()]);
     } catch (saveError) {
       setError(
@@ -451,37 +630,6 @@ export default function AdminDashboardPage() {
       );
     } finally {
       setSavingBooking(false);
-    }
-  }
-
-  async function deleteBooking(booking: BookingRecord) {
-    if (
-      !window.confirm(
-        `Remove this ${booking.item.type === "court" ? "court reservation" : "equipment rental"} from ${booking.orderReference}?`
-      )
-    ) {
-      return;
-    }
-
-    setError("");
-    try {
-      const response = await fetch(
-        `/api/admin/bookings/${booking.paymentId}?itemIndex=${booking.itemIndex}`,
-        { method: "DELETE" }
-      );
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || "The booking could not be deleted.");
-      }
-
-      setNotice(result.message);
-      await Promise.all([loadBookings(), loadPayments()]);
-    } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "The booking could not be deleted."
-      );
     }
   }
 
@@ -640,7 +788,7 @@ export default function AdminDashboardPage() {
     return (
       <main className="admin-page">
         <section className="admin-main admin-access-state">
-          <p>Loading pending payments...</p>
+          <p>Loading admin dashboard...</p>
         </section>
       </main>
     );
@@ -681,14 +829,14 @@ export default function AdminDashboardPage() {
           </a>
           <a className="admin-side-link" href="#payments">
             <span className="admin-side-icon">₱</span>
-            Payment review
-            {payments.length > 0 && (
-              <span className="admin-side-count">{payments.length}</span>
+            Top-up approvals
+            {topUpPayments.length > 0 && (
+              <span className="admin-side-count">{topUpPayments.length}</span>
             )}
           </a>
           <a className="admin-side-link" href="#bookings">
             <span className="admin-side-icon">▣</span>
-            Bookings & rentals
+            Booking history
             {bookings.length > 0 && (
               <span className="admin-side-count">{bookings.length}</span>
             )}
@@ -751,10 +899,10 @@ export default function AdminDashboardPage() {
           <section className="admin-welcome" id="overview">
             <div>
               <span className="admin-welcome-label">PCKL+ MANAGEMENT</span>
-              <h2>Payment review queue.</h2>
+              <h2>Top-up approvals & booking history.</h2>
               <p>
-                Verify submitted receipts and confirm or reject each customer
-                payment.
+                Review membership top-ups and monitor court and equipment
+                bookings.
               </p>
             </div>
             <div className="admin-welcome-mark">P<span>+</span></div>
@@ -779,20 +927,20 @@ export default function AdminDashboardPage() {
           <section className="admin-stat-grid" id="sales">
             <article className="admin-stat-card admin-stat-highlight">
               <div className="admin-stat-top">
-                <span>Pending payments</span>
+                <span>Pending membership top-ups</span>
                 <span className="admin-stat-icon">◷</span>
               </div>
-              <strong>{payments.length}</strong>
-              <p>Awaiting receipt verification</p>
+              <strong>{topUpPayments.length}</strong>
+              <p>Awaiting admin approval</p>
             </article>
 
             <article className="admin-stat-card">
               <div className="admin-stat-top">
-                <span>Amount to verify</span>
+                <span>Amount awaiting approval</span>
                 <span className="admin-stat-icon">₱</span>
               </div>
-              <strong>{formatPeso(queueSummary.amount)}</strong>
-              <p>Pending customer submissions</p>
+              <strong>{formatPeso(pendingTopUpAmount)}</strong>
+              <p>Membership top-ups only</p>
             </article>
 
             <article className="admin-stat-card">
@@ -800,8 +948,8 @@ export default function AdminDashboardPage() {
                 <span>Court reservations</span>
                 <span className="admin-stat-icon">▣</span>
               </div>
-              <strong>{queueSummary.courts}</strong>
-              <p>Across pending payments</p>
+              <strong>{historySummary.court}</strong>
+              <p>In booking history</p>
             </article>
 
             <article className="admin-stat-card">
@@ -809,16 +957,19 @@ export default function AdminDashboardPage() {
                 <span>Equipment rentals</span>
                 <span className="admin-stat-icon">▤</span>
               </div>
-              <strong>{queueSummary.equipment}</strong>
-              <p>Across pending payments</p>
+              <strong>{historySummary.equipment}</strong>
+              <p>In booking history</p>
             </article>
           </section>
 
           <section className="admin-queue-panel" id="payments">
             <div className="admin-section-heading admin-queue-heading">
               <div>
-                <h2>Pending Payments</h2>
-                <p>Open a payment to review its receipt and details.</p>
+                <h2>Membership Top-up Approvals</h2>
+                <p>
+                  Only membership top-ups require admin review. Open one to
+                  verify its receipt.
+                </p>
               </div>
 
               <div className="admin-queue-actions">
@@ -827,8 +978,8 @@ export default function AdminDashboardPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search customer or order..."
-                    aria-label="Search pending payments"
+                    placeholder="Search top-ups..."
+                    aria-label="Search membership top-ups"
                   />
                 </label>
                 <button
@@ -841,42 +992,20 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="admin-tabs" role="tablist" aria-label="Payment type">
-              {(
-                [
-                  ["all", "All payments"],
-                  ["courts", "Court reservations"],
-                  ["equipment", "Equipment rentals"],
-                  ["top-ups", "Membership top-ups"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === value}
-                  className={tab === value ? "active" : ""}
-                  onClick={() => setTab(value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
             <div className="admin-request-group">
               <h3>
-                Submitted payments
-                <span>{visiblePayments.length}</span>
+                Pending top-ups
+                <span>{visibleTopUps.length}</span>
               </h3>
 
-              {visiblePayments.length === 0 ? (
+              {visibleTopUps.length === 0 ? (
                 <p className="admin-empty-row">
-                  {payments.length === 0
-                    ? "There are no pending payments to review."
-                    : "No payments match your search and filter."}
+                  {topUpPayments.length === 0
+                    ? "There are no membership top-ups awaiting approval."
+                    : "No top-ups match your search."}
                 </p>
               ) : (
-                visiblePayments.map((payment) => (
+                visibleTopUps.map((payment) => (
                   <article className="admin-request-card" key={payment.id}>
                     <div className="admin-request-main">
                       <div className="admin-request-icon admin-court-icon">₱</div>
@@ -890,9 +1019,8 @@ export default function AdminDashboardPage() {
                         </p>
                         <div className="admin-request-meta">
                           <span>
-                            {payment.payment_type === "top_up"
-                              ? `Membership card top-up · ${payment.membership_card_id ?? "Card ID unavailable"}`
-                              : describeItems(payment.cart)}
+                            Membership card top-up ·{" "}
+                            {payment.membership_card_id ?? "Card ID unavailable"}
                           </span>
                         </div>
                         <span className="admin-submitted">
@@ -920,10 +1048,11 @@ export default function AdminDashboardPage() {
           <section className="admin-queue-panel" id="bookings">
             <div className="admin-section-heading admin-queue-heading">
               <div>
-                <h2>Court Reservations & Equipment Rentals</h2>
+                <h2>Booking History</h2>
                 <p>
-                  Manage booking items attached to pending customer orders.
-                  Payment confirmation remains a separate step.
+                  Monitor past and present court reservations and equipment
+                  rentals. History is read-only; new bookings can be added to a
+                  pending customer order.
                 </p>
               </div>
               <div className="admin-queue-actions">
@@ -938,22 +1067,19 @@ export default function AdminDashboardPage() {
                   type="button"
                   className="admin-confirm-button"
                   onClick={() => openBookingEditor()}
-                  disabled={
-                    !payments.some(
-                      (payment) =>
-                        payment.status === "pending" &&
-                        payment.payment_type === "order"
-                    )
-                  }
                 >
                   Add booking
                 </button>
               </div>
             </div>
 
+            {bookingError && (
+              <div className="admin-error" role="alert">{bookingError}</div>
+            )}
+
             <div className="admin-request-group">
               <h3>
-                Pending booking items
+                Court reservations and equipment rentals
                 <span>{bookings.length}</span>
               </h3>
 
@@ -961,28 +1087,33 @@ export default function AdminDashboardPage() {
                 <p className="admin-empty-row">Loading bookings...</p>
               ) : bookings.length === 0 ? (
                 <p className="admin-empty-row">
-                  {payments.some(
-                    (payment) =>
-                      payment.status === "pending" &&
-                      payment.payment_type === "order"
-                  )
-                    ? "There are no court or equipment items in pending orders."
-                    : "A customer order must be submitted before you can add a booking."}
+                  No court reservations or equipment rentals have been recorded.
                 </p>
               ) : (
                 bookings.map((booking) => {
-                  const paymentBookingCount = bookings.filter(
-                    (item) => item.paymentId === booking.paymentId
-                  ).length;
+                  const timeRange =
+                    booking.item.startTime && booking.item.endTime
+                      ? ` · ${booking.item.startTime}–${booking.item.endTime}`
+                      : "";
                   const description =
                     booking.item.type === "court"
-                      ? `${booking.item.name} · ${booking.item.date} · ${booking.item.startTime}–${booking.item.endTime}`
-                      : `${booking.item.quantity} × ${booking.item.name} · ${booking.item.durationHours} hour${booking.item.durationHours === 1 ? "" : "s"}`;
+                      ? `${booking.item.name} · ${booking.item.date}${timeRange}`
+                      : `${booking.item.quantity} × ${booking.item.name} · ${booking.item.date}${timeRange} · ${booking.item.durationHours} hour${booking.item.durationHours === 1 ? "" : "s"}`;
 
                   return (
                     <article
-                      className="admin-request-card"
+                      className="admin-request-card admin-booking-history-card"
                       key={`${booking.paymentId}-${booking.itemIndex}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View details for ${description}`}
+                      onClick={() => setSelectedBooking(booking)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedBooking(booking);
+                        }
+                      }}
                     >
                       <div className="admin-request-main">
                         <div className="admin-request-icon admin-court-icon">
@@ -991,7 +1122,7 @@ export default function AdminDashboardPage() {
                         <div className="admin-request-info">
                           <div className="admin-request-title-row">
                             <h4>{description}</h4>
-                            <StatusBadge status="pending" />
+                            <BookingStatusBadge status={booking.status} />
                           </div>
                           <p>
                             {booking.orderReference} · {booking.customerName} ·{" "}
@@ -1003,40 +1134,19 @@ export default function AdminDashboardPage() {
                                 ? `${booking.item.durationHours} hour${booking.item.durationHours === 1 ? "" : "s"}`
                                 : `${formatPeso(booking.item.unitPrice)} per item / hour`}
                             </span>
-                            <span>
-                              Item total:{" "}
-                              {formatPeso(
-                                booking.item.unitPrice *
-                                  booking.item.quantity *
-                                  booking.item.durationHours
-                              )}
-                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="admin-booking-actions">
-                        <strong>{formatPeso(booking.amount)} order total</strong>
-                        <button
-                          type="button"
-                          className="admin-proof-button"
-                          onClick={() => openBookingEditor(booking)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-delete-button"
-                          onClick={() => void deleteBooking(booking)}
-                          disabled={paymentBookingCount === 1}
-                          title={
-                            paymentBookingCount === 1
-                              ? "Keep one item so the pending payment can still be reviewed."
-                              : undefined
-                          }
-                        >
-                          Delete
-                        </button>
+                      <div className="admin-request-side">
+                        <strong>
+                          {formatPeso(
+                            booking.item.unitPrice *
+                              booking.item.quantity *
+                              booking.item.durationHours
+                          )}
+                        </strong>
+                        <span>Item total</span>
                       </div>
                     </article>
                   );
@@ -1316,8 +1426,8 @@ export default function AdminDashboardPage() {
 
             {activity.length === 0 ? (
               <p className="admin-activity-empty">
-                No actions yet. Confirm or reject a payment to see activity
-                here.
+                No actions yet. Confirm or reject a membership top-up to see
+                activity here.
               </p>
             ) : (
               <div className="admin-activity-list">
@@ -1367,11 +1477,9 @@ export default function AdminDashboardPage() {
             <div className="admin-modal-header">
               <div>
                 <span className="admin-modal-eyebrow">
-                  {editingBooking ? "EDIT PENDING BOOKING" : "NEW PENDING BOOKING"}
+                  NEW BOOKING
                 </span>
-                <h2 id="booking-modal-title">
-                  {editingBooking ? "Edit booking" : "Add booking"}
-                </h2>
+                <h2 id="booking-modal-title">Add booking</h2>
               </div>
               <button
                 type="button"
@@ -1385,34 +1493,32 @@ export default function AdminDashboardPage() {
             </div>
 
             <form className="admin-booking-form" onSubmit={saveBooking}>
-              {!editingBooking && (
-                <label>
-                  Pending customer order
-                  <select
-                    required
-                    value={bookingDraft.paymentId}
-                    onChange={(event) =>
-                      setBookingDraft({
-                        ...bookingDraft,
-                        paymentId: event.target.value,
-                      })
-                    }
-                  >
-                    {payments
-                      .filter(
-                        (payment) =>
-                          payment.status === "pending" &&
-                          payment.payment_type === "order"
-                      )
-                      .map((payment) => (
-                        <option key={payment.id} value={payment.id}>
-                          {payment.order_reference} · {payment.customer_name} ·{" "}
-                          {formatPeso(payment.amount)}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              )}
+              <label>
+                Pending customer order
+                <select
+                  required
+                  value={bookingDraft.paymentId}
+                  onChange={(event) =>
+                    setBookingDraft({
+                      ...bookingDraft,
+                      paymentId: event.target.value,
+                    })
+                  }
+                >
+                  {payments
+                    .filter(
+                      (payment) =>
+                        payment.status === "pending" &&
+                        payment.payment_type === "order"
+                    )
+                    .map((payment) => (
+                      <option key={payment.id} value={payment.id}>
+                        {payment.order_reference} · {payment.customer_name} ·{" "}
+                        {formatPeso(payment.amount)}
+                      </option>
+                    ))}
+                </select>
+              </label>
 
               <label>
                 Booking type
@@ -1559,9 +1665,9 @@ export default function AdminDashboardPage() {
               </div>
 
               <p className="admin-verification-warning">
-                Saving updates the order cart and recalculates its amount. The
-                receipt is unchanged. Check that it matches the updated amount
-                before confirming or rejecting the payment in Payment review.
+                Saving adds this item to the selected pending customer order and
+                recalculates its total. Standalone walk-in bookings are not
+                supported without a backend change.
               </p>
 
               {error && <div className="admin-error" role="alert">{error}</div>}
@@ -1584,6 +1690,118 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {selectedBooking && (
+        <div
+          className="admin-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedBooking(null);
+            }
+          }}
+        >
+          <section
+            className="admin-proof-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="booking-details-title"
+          >
+            <div className="admin-modal-header">
+              <div>
+                <span className="admin-modal-eyebrow">
+                  {selectedBooking.item.type === "court"
+                    ? "COURT RESERVATION"
+                    : "EQUIPMENT RENTAL"}
+                </span>
+                <h2 id="booking-details-title">Booking details</h2>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setSelectedBooking(null)}
+                aria-label="Close booking details"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="admin-proof-details">
+              <div className="admin-proof-summary">
+                <span>Booking</span>
+                <strong>
+                  {selectedBooking.item.type === "equipment"
+                    ? `${selectedBooking.item.quantity} × `
+                    : ""}
+                  {selectedBooking.item.name}
+                </strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Date and time</span>
+                <strong>
+                  {selectedBooking.item.date || "Not recorded"}
+                  {selectedBooking.item.startTime
+                    ? ` · ${selectedBooking.item.startTime}`
+                    : ""}
+                  {selectedBooking.item.endTime
+                    ? `–${selectedBooking.item.endTime}`
+                    : ""}
+                </strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Duration</span>
+                <strong>
+                  {selectedBooking.item.durationHours} hour
+                  {selectedBooking.item.durationHours === 1 ? "" : "s"}
+                </strong>
+              </div>
+              {selectedBooking.item.type === "equipment" && (
+                <div className="admin-proof-summary">
+                  <span>Quantity</span>
+                  <strong>{selectedBooking.item.quantity}</strong>
+                </div>
+              )}
+              <div className="admin-proof-summary">
+                <span>Unit price</span>
+                <strong>
+                  {formatPeso(selectedBooking.item.unitPrice)}
+                  {selectedBooking.item.type === "equipment"
+                    ? " per item / hour"
+                    : " per hour"}
+                </strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Item total</span>
+                <strong>
+                  {formatPeso(
+                    selectedBooking.item.unitPrice *
+                      selectedBooking.item.quantity *
+                      selectedBooking.item.durationHours
+                  )}
+                </strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Status</span>
+                <strong>
+                  <BookingStatusBadge status={selectedBooking.status} />
+                </strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Order reference</span>
+                <strong>{selectedBooking.orderReference}</strong>
+              </div>
+              <div className="admin-proof-summary">
+                <span>Customer</span>
+                <strong>
+                  {selectedBooking.customerName}
+                  <br />
+                  {selectedBooking.customerEmail}
+                </strong>
+              </div>
+            </div>
           </section>
         </div>
       )}
@@ -1617,7 +1835,7 @@ export default function AdminDashboardPage() {
                 type="button"
                 className="admin-modal-close"
                 onClick={() => setSelectedPayment(null)}
-                aria-label="Close payment review"
+                aria-label="Close top-up review"
                 disabled={Boolean(reviewingId)}
               >
                 ×

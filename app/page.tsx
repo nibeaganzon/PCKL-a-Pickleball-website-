@@ -1,9 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import CurrentYear from "./current-year";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { useMembershipBalance } from "@/lib/use-membership-balance";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useInventory } from "@/lib/use-inventory";
+
+type TopUpStatus = {
+  id: string;
+  order_reference: string | null;
+  amount: number | string;
+  topup_date: string;
+  status: string;
+};
 
 const services = [
   {
@@ -36,13 +47,73 @@ const services = [
 ];
 
 export default function HomePage() {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, card, isAdmin, signOut } = useAuth();
   const { courts, loading, error } = useInventory();
+  const cardId = card?.card_number || card?.id || "";
+  const {
+    balance: currentBalance,
+    error: balanceError,
+    loading: balanceLoading,
+  } = useMembershipBalance(cardId);
+  const [topUpsResult, setTopUpsResult] = useState<{
+    cardId: string;
+    topUps: TopUpStatus[];
+    error: string;
+  } | null>(null);
   const featuredCourts = courts.slice(0, 3);
   const cardholderName =
     typeof user?.user_metadata.full_name === "string"
       ? user.user_metadata.full_name.trim()
       : "";
+
+  useEffect(() => {
+    if (!user || !card?.id) return;
+
+    let active = true;
+    const loadTopUps = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data, error: queryError } = await supabase
+          .from("topups")
+          .select("id, order_reference, amount, topup_date, status")
+          .eq("card_id", card.id)
+          .order("topup_date", { ascending: false })
+          .limit(5);
+
+        if (queryError) throw queryError;
+        if (active) {
+          setTopUpsResult({
+            cardId: card.id,
+            topUps: (data ?? []) as TopUpStatus[],
+            error: "",
+          });
+        }
+      } catch (loadError) {
+        if (active) {
+          setTopUpsResult({
+            cardId: card.id,
+            topUps: [],
+            error:
+              loadError instanceof Error
+                ? loadError.message
+                : "Top-up status could not be loaded.",
+          });
+        }
+      }
+    };
+
+    void loadTopUps();
+    const intervalId = window.setInterval(() => void loadTopUps(), 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [user, card?.id]);
+
+  const displayedBalance = currentBalance ?? card?.balance ?? null;
+  const currentTopUps =
+    topUpsResult?.cardId === card?.id ? topUpsResult : null;
 
   return (
     <main>
@@ -68,6 +139,34 @@ export default function HomePage() {
           )}
           {user ? (
             <>
+              {!isAdmin && card && (
+                <Link
+                  className="header-balance-card"
+                  href="/membership/top-up"
+                  aria-label={
+                    displayedBalance === null
+                      ? "View membership card and top up"
+                      : `Membership card balance ${new Intl.NumberFormat(
+                          "en-PH",
+                          { style: "currency", currency: "PHP" }
+                        ).format(displayedBalance)}. Click to top up`
+                  }
+                >
+                  <span>Card balance</span>
+                  <strong>
+                    {balanceLoading && displayedBalance === null
+                      ? "Loading..."
+                      : balanceError && displayedBalance === null
+                        ? "Unavailable"
+                        : new Intl.NumberFormat("en-PH", {
+                            style: "currency",
+                            currency: "PHP",
+                            maximumFractionDigits: 2,
+                          }).format(displayedBalance ?? 0)}
+                  </strong>
+                  <span>Click to top up ↗</span>
+                </Link>
+              )}
               <span className="header-greeting">
                 {isAdmin
                   ? "Hi, admin! Welcome!"
@@ -367,12 +466,89 @@ export default function HomePage() {
             Create your PCKL+ account to manage reservations, rent equipment,
             and keep track of your membership card balance.
           </p>
-          <a className="button button-navy" href="/register">
-            Join PCKL+ <span aria-hidden="true">↗</span>
-          </a>
-          <a className="button button-navy" href="/membership/top-up">
-            Top up your card <span aria-hidden="true">↗</span>
-          </a>
+          {user ? (
+            <Link className="button button-navy" href="/membership/top-up">
+              Top up your card <span aria-hidden="true">↗</span>
+            </Link>
+          ) : (
+            <>
+              <a className="button button-navy" href="/register">
+                Join PCKL+ <span aria-hidden="true">↗</span>
+              </a>
+              <a className="button button-navy" href="/membership/top-up">
+                Top up your card <span aria-hidden="true">↗</span>
+              </a>
+            </>
+          )}
+          {user && card && (
+            <div className="home-topup-status" aria-live="polite">
+              <div className="home-topup-heading">
+                <div>
+                  <span className="section-kicker">MEMBERSHIP CARD</span>
+                  <h3>Recent top-ups</h3>
+                </div>
+                <span className="home-card-balance">
+                  {displayedBalance === null
+                    ? balanceError || "Loading balance..."
+                    : new Intl.NumberFormat("en-PH", {
+                        style: "currency",
+                        currency: "PHP",
+                        maximumFractionDigits: 2,
+                      }).format(displayedBalance)}
+                </span>
+              </div>
+              {currentTopUps?.error && (
+                <p className="home-topup-error" role="alert">
+                  {currentTopUps.error}
+                </p>
+              )}
+              {!currentTopUps ? (
+                <p className="home-topup-empty">Loading top-up status...</p>
+              ) : currentTopUps.error ? null : currentTopUps.topUps.length === 0 ? (
+                <p className="home-topup-empty">No top-ups have been submitted yet.</p>
+              ) : (
+                <ul className="home-topup-list">
+                  {currentTopUps.topUps.map((topUp) => (
+                    <li key={topUp.id}>
+                      <div>
+                        <strong>
+                          {topUp.order_reference || "Membership top-up"}
+                        </strong>
+                        <span>
+                          {new Date(topUp.topup_date).toLocaleDateString(
+                            "en-PH",
+                            { dateStyle: "medium" }
+                          )}
+                        </span>
+                      </div>
+                      <div className="home-topup-result">
+                        <strong>
+                          {new Intl.NumberFormat("en-PH", {
+                            style: "currency",
+                            currency: "PHP",
+                            maximumFractionDigits: 2,
+                          }).format(Number(topUp.amount))}
+                        </strong>
+                        <span
+                          className={`home-topup-badge home-topup-${topUp.status.toLowerCase()}`}
+                        >
+                          {topUp.status}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {currentTopUps?.topUps.some(
+                (topUp) => topUp.status.toLowerCase() === "pending"
+              ) && (
+                <p className="home-topup-note">
+                  Pending top-ups are not added to your card balance until
+                  approved.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="membership-visual">

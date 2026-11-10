@@ -648,54 +648,6 @@
   outline: none;
 }
 
-.admin-tabs {
-  display: flex;
-  gap: 24px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.admin-tabs button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 0;
-  border: 0;
-  background: transparent;
-  color: var(--admin-muted);
-  font-size: 10px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.admin-tabs button.active {
-  color: var(--pckl-navy);
-}
-
-.admin-tabs button.active::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--pckl-lime);
-  content: "";
-}
-
-.admin-tabs button span {
-  display: grid;
-  min-width: 20px;
-  height: 20px;
-  place-items: center;
-  padding: 0 5px;
-  border-radius: 4px;
-  background: #f0f2f7;
-  color: var(--pckl-navy);
-  font-size: 9px;
-}
-
 .admin-request-group {
   padding: 19px 24px 5px;
 }
@@ -735,6 +687,15 @@
 
 .admin-request-card:hover {
   border-color: #c7d0e3;
+}
+
+.admin-booking-history-card {
+  cursor: pointer;
+}
+
+.admin-booking-history-card:focus-visible {
+  outline: 2px solid var(--pckl-navy);
+  outline-offset: 2px;
 }
 
 .admin-request-main {
@@ -835,6 +796,17 @@
 }
 
 .admin-status-rejected {
+  background: #fdebed;
+  color: #ae3441;
+}
+
+.admin-status-active,
+.admin-status-done {
+  background: #e8f7ed;
+  color: #227544;
+}
+
+.admin-status-cancelled {
   background: #fdebed;
   color: #ae3441;
 }
@@ -1599,18 +1571,6 @@
   .admin-queue-actions,
   .admin-search {
     width: 100%;
-  }
-
-  .admin-tabs {
-    gap: 15px;
-    overflow-x: auto;
-    padding-right: 17px;
-    padding-left: 17px;
-  }
-
-  .admin-tabs button {
-    flex-shrink: 0;
-    font-size: 9px;
   }
 
   .admin-request-group {

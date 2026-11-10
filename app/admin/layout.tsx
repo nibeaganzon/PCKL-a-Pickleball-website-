@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Admin Dashboard | PCKL+",
   description:
-    "Manage PCKL+ court reservations, equipment rentals, payment proofs, and daily sales.",
+    "Review PCKL+ membership top-ups and monitor court reservations and equipment rental history.",
 };
 
 export default function AdminLayout({

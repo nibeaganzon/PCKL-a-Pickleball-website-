@@ -61,6 +61,55 @@ function formatDate(value: string) {
   });
 }
 
+function formatBookingDate(value: string | undefined) {
+  if (!value) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day)
+  ) {
+    return value;
+  }
+  return `${month}/${day}/${year}`;
+}
+
+function formatBookingTime(value: string | undefined) {
+  if (!value) return "";
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) return value;
+
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  const period = hours < 12 ? "AM" : "PM";
+  return `${hours % 12 || 12}:${minutes} ${period}`;
+}
+
+function formatBookingDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+}
+
+function escapeCsvValue(value: string | number) {
+  const text = String(value);
+  const safeText =
+    typeof value === "string" && /^[\t\r ]*[=+\-@]/.test(text)
+      ? `'${text}`
+      : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
+}
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`admin-status admin-status-${status}`}>
@@ -230,6 +279,57 @@ export default function AdminDashboardPage() {
       ),
     [bookings]
   );
+
+  function exportBookingHistory() {
+    const headers = [
+      "Order Reference",
+      "Customer Name",
+      "Customer Email",
+      "Booking Type",
+      "Item",
+      "Booking Date",
+      "Start Time",
+      "End Time",
+      "Quantity",
+      "Duration Hours",
+      "Unit Price (PHP)",
+      "Total (PHP)",
+      "Status",
+      "Recorded At",
+    ];
+    const rows = bookings.map((booking) => [
+      booking.orderReference,
+      booking.customerName,
+      booking.customerEmail,
+      booking.item.type,
+      booking.item.name,
+      formatBookingDate(booking.item.date),
+      formatBookingTime(booking.item.startTime),
+      formatBookingTime(booking.item.endTime),
+      booking.item.quantity,
+      booking.item.durationHours,
+      booking.item.unitPrice,
+      booking.item.unitPrice *
+        booking.item.quantity *
+        booking.item.durationHours,
+      booking.status,
+      formatBookingDateTime(booking.historyAt),
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map(escapeCsvValue).join(","))
+      .join("\r\n");
+    const file = new Blob(["\uFEFF", csv], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `booking-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   async function reviewPayment(
     payment: PaymentRecord,
@@ -653,6 +753,14 @@ export default function AdminDashboardPage() {
                 <button
                   type="button"
                   className="admin-proof-button"
+                  onClick={exportBookingHistory}
+                  disabled={loadingBookings || bookings.length === 0}
+                >
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  className="admin-proof-button"
                   onClick={() => void loadBookings()}
                 >
                   Refresh
@@ -664,7 +772,12 @@ export default function AdminDashboardPage() {
               <div className="admin-error" role="alert">{bookingError}</div>
             )}
 
-            <div className="admin-request-group">
+            <div
+              className="admin-request-group admin-booking-history-list"
+              role="region"
+              aria-label="Booking history records"
+              tabIndex={0}
+            >
               <h3>
                 Court reservations and equipment rentals
                 <span>{bookings.length}</span>
@@ -678,14 +791,32 @@ export default function AdminDashboardPage() {
                 </p>
               ) : (
                 bookings.map((booking) => {
+                  const inventoryItem =
+                    booking.item.type === "court"
+                      ? inventoryCourts.find(
+                          (item) => item.id === booking.item.id
+                        ) ??
+                        inventoryCourts.find(
+                          (item) =>
+                            item.name.toLowerCase() ===
+                            booking.item.name.toLowerCase()
+                        )
+                      : inventoryEquipment.find(
+                          (item) => item.id === booking.item.id
+                        ) ??
+                        inventoryEquipment.find(
+                          (item) =>
+                            item.name.toLowerCase() ===
+                            booking.item.name.toLowerCase()
+                        );
                   const timeRange =
                     booking.item.startTime && booking.item.endTime
-                      ? ` · ${booking.item.startTime}–${booking.item.endTime}`
+                      ? ` · ${formatBookingTime(booking.item.startTime)}–${formatBookingTime(booking.item.endTime)}`
                       : "";
                   const description =
                     booking.item.type === "court"
-                      ? `${booking.item.name} · ${booking.item.date}${timeRange}`
-                      : `${booking.item.quantity} × ${booking.item.name} · ${booking.item.date}${timeRange} · ${booking.item.durationHours} hour${booking.item.durationHours === 1 ? "" : "s"}`;
+                      ? `${booking.item.name} · ${formatBookingDate(booking.item.date)}${timeRange}`
+                      : `${booking.item.quantity} × ${booking.item.name} · ${formatBookingDate(booking.item.date)}${timeRange} · ${booking.item.durationHours} hour${booking.item.durationHours === 1 ? "" : "s"}`;
 
                   return (
                     <article
@@ -704,7 +835,17 @@ export default function AdminDashboardPage() {
                     >
                       <div className="admin-request-main">
                         <div className="admin-request-icon admin-court-icon">
-                          {booking.item.type === "court" ? "▣" : "▤"}
+                          {inventoryItem?.image ? (
+                            <img
+                              className="admin-booking-item-image"
+                              src={inventoryItem.image}
+                              alt={`${booking.item.name} image`}
+                            />
+                          ) : booking.item.type === "court" ? (
+                            "▣"
+                          ) : (
+                            "▤"
+                          )}
                         </div>
                         <div className="admin-request-info">
                           <div className="admin-request-title-row">
@@ -1094,12 +1235,12 @@ export default function AdminDashboardPage() {
               <div className="admin-proof-summary">
                 <span>Date and time</span>
                 <strong>
-                  {selectedBooking.item.date || "Not recorded"}
+                  {formatBookingDate(selectedBooking.item.date) || "Not recorded"}
                   {selectedBooking.item.startTime
-                    ? ` · ${selectedBooking.item.startTime}`
+                    ? ` · ${formatBookingTime(selectedBooking.item.startTime)}`
                     : ""}
                   {selectedBooking.item.endTime
-                    ? `–${selectedBooking.item.endTime}`
+                    ? `–${formatBookingTime(selectedBooking.item.endTime)}`
                     : ""}
                 </strong>
               </div>

@@ -3,11 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CartItem } from "./cart";
 import type {
+  CourtStatus,
   CourtInventoryItem,
   EquipmentInventoryItem,
   InventoryItem,
 } from "./inventory";
 import { validatePaymentCart } from "./payments";
+
+type InventoryApiCourt = Omit<CourtInventoryItem, "status"> & {
+  status: CourtStatus | "Booked";
+};
 
 export type SaveInventoryDraftInput = {
   id?: string;
@@ -17,7 +22,7 @@ export type SaveInventoryDraftInput = {
   price: string;
   quantity: string;
   courtType: "Indoor" | "Outdoor";
-  status: "Available" | "Booked" | "Maintenance";
+  status: CourtStatus;
   image: string;
   pendingImage?: File | null;
 };
@@ -111,7 +116,12 @@ export function useInventory() {
       if (!response.ok) {
         throw new Error(result.message || "Inventory could not be loaded.");
       }
-      setCourts(result.courts);
+      setCourts(
+        (result.courts as InventoryApiCourt[]).map((court) => ({
+          ...court,
+          status: court.status === "Booked" ? "Maintenance" : court.status,
+        }))
+      );
       setEquipment(result.equipment);
       setError("");
     } catch (loadError) {

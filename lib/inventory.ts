@@ -1,4 +1,4 @@
-export type CourtStatus = "Available" | "Booked" | "Maintenance";
+export type CourtStatus = "Available" | "Maintenance";
 export type CourtType = "Indoor" | "Outdoor";
 
 export type CourtInventoryItem = {

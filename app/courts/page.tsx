@@ -11,7 +11,7 @@ import type { CourtInventoryItem } from "@/lib/inventory";
 
 type Court = CourtInventoryItem;
 
-type AvailabilityFilter = "All" | "Available" | "Booked";
+type AvailabilityFilter = "All" | "Available" | "Maintenance";
 type CourtTypeFilter = "All" | "Indoor" | "Outdoor";
 
 export default function CourtsPage() {
@@ -263,7 +263,7 @@ export default function CourtsPage() {
             >
               <option value="All">All courts</option>
               <option value="Available">Available</option>
-              <option value="Booked">Booked</option>
+              <option value="Maintenance">Maintenance</option>
             </select>
           </div>
 
@@ -310,9 +310,7 @@ export default function CourtsPage() {
                   className={`court-status ${
                     court.status === "Available"
                       ? "status-available"
-                      : court.status === "Booked"
-                        ? "status-booked"
-                        : "status-maintenance"
+                      : "status-maintenance"
                   }`}
                 >
                   <span />
@@ -367,7 +365,7 @@ export default function CourtsPage() {
                       className="court-book-button disabled-book-button"
                       disabled
                     >
-                      {court.status === "Booked" ? "Booked" : "Unavailable"}
+                      Unavailable
                     </button>
                   )}
                 </div>

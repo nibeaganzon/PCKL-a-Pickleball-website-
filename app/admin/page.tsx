@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import type { PaymentItem, PaymentRecord, PaymentStatus } from "@/lib/payments";
 import { useInventory } from "@/lib/use-inventory";
-import type { InventoryItem } from "@/lib/inventory";
+import type { CourtStatus, InventoryItem } from "@/lib/inventory";
 
 type Activity = {
   id: string;
@@ -42,7 +42,7 @@ type InventoryDraft = {
   price: string;
   quantity: string;
   courtType: "Indoor" | "Outdoor";
-  status: "Available" | "Booked" | "Maintenance";
+  status: CourtStatus;
   image: string;
 };
 
@@ -871,7 +871,6 @@ export default function AdminDashboardPage() {
                         }
                       >
                         <option value="Available">Available</option>
-                        <option value="Booked">Booked</option>
                         <option value="Maintenance">Maintenance</option>
                       </select>
                     </label>

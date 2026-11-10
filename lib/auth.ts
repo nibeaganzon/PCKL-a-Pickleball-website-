@@ -9,6 +9,70 @@ export type MembershipCardSummary = {
   status: string;
 };
 
+export async function signInMember(email: string, password: string) {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) throw error;
+  if (!data.user) {
+    throw new Error("Login failed. Please try again.");
+  }
+
+  const { data: admin } = await supabase
+    .from("admin_members")
+    .select("user_id")
+    .eq("user_id", data.user.id)
+    .maybeSingle();
+
+  return {
+    user: data.user,
+    isAdmin: Boolean(admin),
+  };
+}
+
+export async function registerMember(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<{ cardNumber: string }> {
+  const supabase = createSupabaseBrowserClient();
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: input.email.trim().toLowerCase(),
+    password: input.password,
+    options: {
+      data: {
+        full_name: input.name.trim(),
+      },
+    },
+  });
+
+  if (signUpError) throw signUpError;
+  if (!signUpData.user) {
+    throw new Error("Unable to create account. Please try again.");
+  }
+
+  const userId = signUpData.user.id;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const response = await fetch(
+      `/api/membership-cards?userId=${encodeURIComponent(userId)}`,
+      { cache: "no-store" }
+    );
+    if (response.ok) {
+      const result = await response.json();
+      if (result.card?.card_number) {
+        return { cardNumber: result.card.card_number };
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  throw new Error(
+    "Your account was created, but your membership card number could not be loaded. Please log in to view your card."
+  );
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [card, setCard] = useState<MembershipCardSummary | null>(null);

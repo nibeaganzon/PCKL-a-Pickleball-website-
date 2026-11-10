@@ -1,5 +1,32 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
+function formatBookingDate(value: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatBookingTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+}
+
+function getBookingDuration(start: string, end: string) {
+  const duration = (Date.parse(end) - Date.parse(start)) / (60 * 60 * 1000);
+  return Number.isFinite(duration) && duration > 0
+    ? Math.max(1, Math.round(duration))
+    : 1;
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ orderReference: string }> }
@@ -16,10 +43,8 @@ export async function GET(
       .select(`
         id,
         order_reference,
-        status,
         total_amount,
         transaction_date,
-        reviewed_at,
         card_id,
         membership_cards (
           card_number
@@ -38,6 +63,8 @@ export async function GET(
           id,
           quantity,
           unit_price,
+          start_date,
+          end_date,
           status,
           equipments (
             name
@@ -50,50 +77,62 @@ export async function GET(
     if (transError) throw transError;
 
     if (trans) {
-      const cardRef = (trans.membership_cards as unknown as { card_number: string })?.card_number || trans.card_id;
-      const reservations = (trans.court_reservations as unknown as Array<{
-        id: string;
-        amount: number;
-        start_date: string;
-        end_date: string;
-        courts: { name: string };
-      }>) || [];
-      const rentals = (trans.equipment_rentals as unknown as Array<{
-        id: string;
-        quantity: number;
-        unit_price: number;
-        equipments: { name: string };
-      }>) || [];
+      const cardRef =
+        (trans.membership_cards as unknown as { card_number: string })?.card_number ||
+        trans.card_id;
+      const reservations =
+        (trans.court_reservations as unknown as Array<{
+          id: string;
+          amount: number;
+          start_date: string;
+          end_date: string;
+          courts: { name: string };
+        }>) || [];
+      const rentals =
+        (trans.equipment_rentals as unknown as Array<{
+          id: string;
+          quantity: number;
+          unit_price: number;
+          start_date: string;
+          end_date: string;
+          equipments: { name: string };
+        }>) || [];
 
       const cart = [
-        ...reservations.map((r) => ({
-          id: r.id,
-          type: "court" as const,
-          name: r.courts?.name || "Court",
-          date: r.start_date?.split("T")[0],
-          startTime: r.start_date ? new Date(r.start_date).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
-          endTime: r.end_date ? new Date(r.end_date).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
-          durationHours: 1,
-          quantity: 1,
-          unitPrice: Number(r.amount),
-        })),
-        ...rentals.map((er) => ({
-          id: er.id,
-          type: "equipment" as const,
-          name: er.equipments?.name || "Equipment",
-          durationHours: 1,
-          quantity: er.quantity,
-          unitPrice: Number(er.unit_price),
-        })),
+        ...reservations.map((r) => {
+          const durationHours = getBookingDuration(r.start_date, r.end_date);
+          return {
+            id: r.id,
+            type: "court" as const,
+            name: r.courts?.name || "Court",
+            date: r.start_date ? formatBookingDate(r.start_date) : "",
+            startTime: r.start_date ? formatBookingTime(r.start_date) : "",
+            endTime: r.end_date ? formatBookingTime(r.end_date) : "",
+            durationHours,
+            quantity: 1,
+            unitPrice: Number(r.amount) / durationHours,
+          };
+        }),
+        ...rentals.map((er) => {
+          const durationHours = getBookingDuration(er.start_date, er.end_date);
+          return {
+            id: er.id,
+            type: "equipment" as const,
+            name: er.equipments?.name || "Equipment",
+            durationHours,
+            quantity: er.quantity,
+            unitPrice: Number(er.unit_price),
+          };
+        }),
       ];
 
       return Response.json(
         {
           payment: {
             order_reference: trans.order_reference,
-            status: (trans.status || "Pending").toLowerCase(),
+            status: "confirmed",
             created_at: trans.transaction_date,
-            reviewed_at: trans.reviewed_at,
+            reviewed_at: null,
             cart,
             amount: Number(trans.total_amount),
             payment_type: "order",
@@ -127,7 +166,9 @@ export async function GET(
     if (topupError) throw topupError;
 
     if (topup) {
-      const cardRef = (topup.membership_cards as unknown as { card_number: string })?.card_number || topup.card_id;
+      const cardRef =
+        (topup.membership_cards as unknown as { card_number: string })?.card_number ||
+        topup.card_id;
       const topupStatus = (topup.status || "Pending").toLowerCase();
       return Response.json(
         {

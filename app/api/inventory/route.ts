@@ -15,7 +15,7 @@ export async function GET() {
       supabase
         .from("court_reservations")
         .select("court_id, start_date, end_date, status")
-        .in("status", ["Active", "Pending"]),
+        .eq("status", "Active"),
     ]);
 
     if (courtsResult.error) throw courtsResult.error;

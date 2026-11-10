@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import CurrentYear from "../current-year";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { registerMember } from "@/lib/auth";
 
 export default function RegisterPage() {
   const [cardholderName, setCardholderName] = useState("");
@@ -25,42 +25,12 @@ export default function RegisterPage() {
 
     setRegistering(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
+      const { cardNumber } = await registerMember({
+        name: cardholderName,
+        email,
         password,
-        options: {
-          data: {
-            full_name: cardholderName.trim(),
-          },
-        },
       });
-
-      if (signUpError) throw signUpError;
-      if (!signUpData.user) {
-        throw new Error("Unable to create account. Please try again.");
-      }
-
-      // Query the automatically provisioned membership card
-      let retrievedCardId = "";
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const { data: card } = await supabase
-          .from("membership_cards")
-          .select("card_number, id")
-          .eq("user_id", signUpData.user.id)
-          .eq("status", "Active")
-          .order("issued_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (card?.card_number) {
-          retrievedCardId = card.card_number;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-
-      setMembershipCardId(retrievedCardId || `PICKL-${signUpData.user.id.slice(0, 16).toUpperCase()}`);
+      setMembershipCardId(cardNumber);
     } catch (error) {
       setRegistrationError(
         error instanceof Error

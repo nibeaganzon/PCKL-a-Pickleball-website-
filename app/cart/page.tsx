@@ -351,8 +351,8 @@ export default function CartPage() {
               </Link>
 
               <p className="cart-summary-note">
-                Final court availability and equipment stock are confirmed by
-                PCKL+ staff after payment verification.
+                Court reservations and equipment rentals are confirmed
+                immediately when you pay with your PCKL+ membership card.
               </p>
             </aside>
           </div>

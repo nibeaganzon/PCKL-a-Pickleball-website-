@@ -1,44 +1,56 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
-export async function POST(request: Request) {
-  let body: unknown;
+export async function GET(request: Request) {
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ message: "Invalid registration details." }, { status: 400 });
-  }
+    const authClient = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser();
 
-  const name =
-    body && typeof body === "object" && "name" in body && typeof body.name === "string"
-      ? body.name.trim()
-      : "";
-  const email =
-    body && typeof body === "object" && "email" in body && typeof body.email === "string"
-      ? body.email.trim().toLowerCase()
-      : "";
+    const url = new URL(request.url);
+    const userIdParam = url.searchParams.get("userId")?.trim() || "";
+    const targetUserId = user?.id || userIdParam;
 
-  if (name.length < 2 || name.length > 100) {
-    return Response.json({ message: "Enter a valid name." }, { status: 400 });
-  }
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return Response.json({ message: "Enter a valid email address." }, { status: 400 });
-  }
+    if ((authError && !targetUserId) || !targetUserId) {
+      return Response.json({ message: "Sign in required." }, { status: 401 });
+    }
 
-  try {
-    const cardId = `PCKL-${crypto.randomUUID().replaceAll("-", "").toUpperCase()}`;
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(targetUserId)) {
+      return Response.json({ message: "Invalid user ID." }, { status: 400 });
+    }
+
     const supabase = createSupabaseServiceClient();
-    const { error } = await supabase.from("membership_cards").insert({
-      card_id: cardId,
-      cardholder_name: name,
-      cardholder_email: email,
-    });
+    const { data: card, error } = await supabase
+      .from("membership_cards")
+      .select("id, card_number, balance, status")
+      .eq("user_id", targetUserId)
+      .eq("status", "Active")
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (error) throw error;
-    return Response.json({ cardId, balance: 0 }, { status: 201 });
-  } catch (error) {
-    console.error("Membership card creation failed:", error);
+    if (!card) {
+      return Response.json({ message: "Membership card not found." }, { status: 404 });
+    }
+
     return Response.json(
-      { message: "Your membership card could not be created. Please try again." },
+      {
+        card: {
+          id: card.id,
+          card_number: card.card_number || card.id,
+          balance: Number(card.balance ?? 0),
+          status: card.status,
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    console.error("Active membership card could not be loaded:", error);
+    return Response.json(
+      { message: "Membership card could not be loaded." },
       { status: 500 }
     );
   }

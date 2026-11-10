@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { validatePaymentCart } from "@/lib/payments";
-import { readCart, writeCart, type CartItem } from "@/lib/cart";
+import { writeCart, type CartItem } from "@/lib/cart";
+import { reconcileCartWithInventory } from "@/lib/use-inventory";
 import { useMembershipBalance } from "@/lib/use-membership-balance";
 import { useAuth } from "@/lib/auth";
 
@@ -44,72 +44,10 @@ export default function PaymentPage() {
     const loadTimer = window.setTimeout(() => {
       void (async () => {
         try {
-          const savedCart = readCart();
-          const validatedCart = validatePaymentCart(savedCart);
-          if (savedCart.length > 0 && !validatedCart) {
-            throw new Error(
-              "Your cart contains invalid items. Please review your items."
-            );
-          }
-          const inventoryResponse = await fetch("/api/inventory", {
-            cache: "no-store",
-          });
-          const inventoryResult = await inventoryResponse.json();
-          if (!inventoryResponse.ok) {
-            throw new Error(
-              inventoryResult.message || "Current inventory could not be loaded."
-            );
-          }
-
-          let unavailableItem = false;
-          const currentCart = validatedCart ?? [];
-          const refreshedCart: CartItem[] = currentCart.map((item) => {
-            if (item.type === "court") {
-              const court = inventoryResult.courts.find(
-                (candidate: { id: string; name: string; status: string }) =>
-                  candidate.id === item.id ||
-                  candidate.name.toLowerCase() === item.name.toLowerCase()
-              );
-              if (!court || court.status !== "Available") {
-                unavailableItem = true;
-                return item;
-              }
-              return {
-                ...item,
-                inventoryId: court.id,
-                name: court.name,
-                unitPrice: court.price,
-                image: court.image,
-              };
-            }
-
-            const legacyName =
-              item.id === "paddle"
-                ? "Pickleball Paddle"
-                : item.id === "ball"
-                  ? "Pickleball Ball"
-                  : item.name;
-            const equipment = inventoryResult.equipment.find(
-              (candidate: { id: string; name: string }) =>
-                candidate.id === item.id ||
-                candidate.name.toLowerCase() === legacyName.toLowerCase()
-            );
-            if (!equipment) {
-              unavailableItem = true;
-              return item;
-            }
-            return {
-              ...item,
-              id: equipment.id,
-              inventoryId: equipment.id,
-              name: equipment.name,
-              unitPrice: equipment.price,
-              image: equipment.image,
-            };
-          });
+          const { cart: refreshedCart, hasUnavailableItems } =
+            await reconcileCartWithInventory();
           setCart(refreshedCart);
-          writeCart(refreshedCart);
-          if (unavailableItem) {
+          if (hasUnavailableItems) {
             setError(
               "Some items in your cart are no longer available. Review or remove them before checkout."
             );
@@ -197,7 +135,7 @@ export default function PaymentPage() {
       writeCart([]);
       setCart([]);
       router.push(
-        `/payment/submitted?reference=${encodeURIComponent(result.orderReference)}`
+        `/payment/confirmation?reference=${encodeURIComponent(result.orderReference)}`
       );
     } catch (err) {
       setError(

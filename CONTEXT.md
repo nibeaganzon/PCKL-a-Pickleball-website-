@@ -24,18 +24,18 @@ _Avoid_: Unverified top-up, pending deposit, top-up draft
 A credit of funds applied to an active membership card once an administrator reviews and approves the submitted payment proof.
 _Avoid_: Deposit, reload, payment submission, peer transfer
 
-**Pending Booking**:
-A court reservation or equipment rental order submitted by a customer at checkout that immediately holds the court slot and awaits administrator approval.
-_Avoid_: Unconfirmed order, checkout draft
+**Checkout Transaction**:
+An immediate purchase settled with an active membership card that records court reservations and equipment rentals.
+_Avoid_: Pending booking, unconfirmed order, checkout draft
 
 **Court Reservation**:
-A scheduled exclusive time slot for a specific court, transitioning from pending to active upon approval, or refunded upon cancellation.
-_Avoid_: Court booking, slot hold
+A scheduled exclusive time slot for a specific court that becomes active immediately upon checkout, or refunded upon cancellation.
+_Avoid_: Court booking, slot hold, pending reservation
 
 **Equipment Rental**:
-A reserved quantity of pickleball paddles or balls for a designated duration.
+A reserved quantity of pickleball paddles or balls for a designated duration that becomes active immediately upon checkout.
 _Avoid_: Gear lease, equipment checkout
 
 **Admin Member**:
-An authenticated user explicitly recorded in the admin registry authorized to approve bookings, monitor payments, and manage facility inventory.
+An authenticated user explicitly recorded in the admin registry authorized to review top-up requests, monitor booking history, and manage facility inventory.
 _Avoid_: Staff, superuser, manager

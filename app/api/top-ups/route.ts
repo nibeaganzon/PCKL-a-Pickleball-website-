@@ -1,8 +1,72 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 const maxProofSize = 5 * 1024 * 1024;
 const allowedProofTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const amountPattern = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/;
+
+export async function GET(request: Request) {
+  try {
+    const authClient = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser();
+
+    if (authError || !user) {
+      return Response.json({ message: "Sign in required." }, { status: 401 });
+    }
+
+    const cardIdParam = new URL(request.url).searchParams.get("cardId")?.trim() || "";
+    const supabase = createSupabaseServiceClient();
+
+    let cardQuery = supabase
+      .from("membership_cards")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("status", "Active");
+
+    if (cardIdParam) {
+      const isUuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(cardIdParam);
+      cardQuery = isUuid
+        ? cardQuery.eq("id", cardIdParam)
+        : cardQuery.eq("card_number", cardIdParam.toUpperCase());
+    }
+
+    const { data: card, error: cardError } = await cardQuery
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (cardError) throw cardError;
+    if (!card) {
+      return Response.json(
+        { topUps: [] },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const { data: topUps, error: topUpsError } = await supabase
+      .from("topups")
+      .select("id, order_reference, amount, topup_date, status")
+      .eq("card_id", card.id)
+      .order("topup_date", { ascending: false })
+      .limit(5);
+
+    if (topUpsError) throw topUpsError;
+
+    return Response.json(
+      { topUps: topUps ?? [] },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    console.error("Top-up status could not be loaded:", error);
+    return Response.json(
+      { message: "Top-up status could not be loaded." },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(request: Request) {
   let proofPath: string | undefined;

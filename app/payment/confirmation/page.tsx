@@ -201,14 +201,16 @@ export default function PaymentConfirmationPage() {
                   Refresh status
                 </button>
               )}
-              <Link
-                href={`/payment/submitted?reference=${encodeURIComponent(
-                  confirmation.order_reference
-                )}`}
-                className="payment-status-home"
-              >
-                View payment status
-              </Link>
+              {isTopUp && (
+                <Link
+                  href={`/payment/submitted?reference=${encodeURIComponent(
+                    confirmation.order_reference
+                  )}`}
+                  className="payment-status-home"
+                >
+                  View payment status
+                </Link>
+              )}
             </div>
           )}
         </section>

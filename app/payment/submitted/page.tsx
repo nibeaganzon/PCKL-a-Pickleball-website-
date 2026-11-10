@@ -37,7 +37,6 @@ export default function SubmittedPaymentPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    debugger;
     let active = true;
     let intervalId: number | undefined;
     const timerId = window.setTimeout(() => {

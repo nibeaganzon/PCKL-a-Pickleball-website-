@@ -1,20 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import CurrentYear from "./current-year";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useMembershipBalance } from "@/lib/use-membership-balance";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useInventory } from "@/lib/use-inventory";
-
-type TopUpStatus = {
-  id: string;
-  order_reference: string | null;
-  amount: number | string;
-  topup_date: string;
-  status: string;
-};
+import { useTopUps } from "@/lib/use-top-ups";
 
 const services = [
   {
@@ -55,65 +46,14 @@ export default function HomePage() {
     error: balanceError,
     loading: balanceLoading,
   } = useMembershipBalance(cardId);
-  const [topUpsResult, setTopUpsResult] = useState<{
-    cardId: string;
-    topUps: TopUpStatus[];
-    error: string;
-  } | null>(null);
+  const currentTopUps = useTopUps(user && card?.id ? card.id : undefined);
   const featuredCourts = courts.slice(0, 3);
   const cardholderName =
     typeof user?.user_metadata.full_name === "string"
       ? user.user_metadata.full_name.trim()
       : "";
 
-  useEffect(() => {
-    if (!user || !card?.id) return;
-
-    let active = true;
-    const loadTopUps = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data, error: queryError } = await supabase
-          .from("topups")
-          .select("id, order_reference, amount, topup_date, status")
-          .eq("card_id", card.id)
-          .order("topup_date", { ascending: false })
-          .limit(5);
-
-        if (queryError) throw queryError;
-        if (active) {
-          setTopUpsResult({
-            cardId: card.id,
-            topUps: (data ?? []) as TopUpStatus[],
-            error: "",
-          });
-        }
-      } catch (loadError) {
-        if (active) {
-          setTopUpsResult({
-            cardId: card.id,
-            topUps: [],
-            error:
-              loadError instanceof Error
-                ? loadError.message
-                : "Top-up status could not be loaded.",
-          });
-        }
-      }
-    };
-
-    void loadTopUps();
-    const intervalId = window.setInterval(() => void loadTopUps(), 15000);
-
-    return () => {
-      active = false;
-      window.clearInterval(intervalId);
-    };
-  }, [user, card?.id]);
-
   const displayedBalance = currentBalance ?? card?.balance ?? null;
-  const currentTopUps =
-    topUpsResult?.cardId === card?.id ? topUpsResult : null;
 
   return (
     <main>

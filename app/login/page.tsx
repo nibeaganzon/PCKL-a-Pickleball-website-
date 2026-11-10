@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CurrentYear from "../current-year";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { signInMember } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,25 +19,9 @@ export default function LoginPage() {
     setMessage("");
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      const { isAdmin } = await signInMember(email, password);
 
-      if (!data.user) {
-        throw new Error("Login failed. Please try again.");
-      }
-
-      // Check if user is an admin
-      const { data: admin } = await supabase
-        .from("admin_members")
-        .select("user_id")
-        .eq("user_id", data.user.id)
-        .maybeSingle();
-
-      if (admin) {
+      if (isAdmin) {
         router.push("/admin");
       } else {
         const searchParams = new URLSearchParams(window.location.search);

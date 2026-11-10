@@ -1,11 +1,72 @@
 import { requireAdmin } from "@/lib/admin-auth";
+import type { PaymentItem } from "@/lib/payments";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
-import {
-  getPendingOrder,
-  normalizeBookingItem,
-  readPaymentCart,
-  savePendingOrderCart,
-} from "./_shared";
+
+export type AdminBookingRecord = {
+  paymentId: string;
+  orderReference: string;
+  customerName: string;
+  customerEmail: string;
+  itemIndex: number;
+  item: PaymentItem;
+  status: string;
+  historyAt: string;
+};
+
+type TransactionRow = {
+  id: string;
+  order_reference: string | null;
+  total_amount: number | string | null;
+  transaction_date: string;
+  membership_cards: {
+    card_number: string | null;
+    user_id: string | null;
+  } | null;
+  court_reservations: Array<{
+    id: string;
+    amount: number | string;
+    start_date: string;
+    end_date: string;
+    status: string | null;
+    courts: { id: string; name: string } | null;
+  }> | null;
+  equipment_rentals: Array<{
+    id: string;
+    quantity: number;
+    unit_price: number | string;
+    start_date: string;
+    end_date: string;
+    status: string | null;
+    equipments: { id: string; name: string } | null;
+  }> | null;
+};
+
+function formatBookingDate(value: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatBookingTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+}
+
+function getBookingDuration(start: string, end: string) {
+  const duration = (Date.parse(end) - Date.parse(start)) / (60 * 60 * 1000);
+  return Number.isFinite(duration) && duration > 0
+    ? Math.max(1, Math.round(duration))
+    : 1;
+}
 
 export async function GET() {
   try {
@@ -13,24 +74,15 @@ export async function GET() {
     if (!authorization.user) return authorization.response;
 
     const supabase = createSupabaseServiceClient();
-    const { data: payments, error } = await supabase
-      .from("payments")
-      .select(
-        "id, order_reference, customer_name, customer_email, amount, cart, status, payment_type, created_at"
-      )
-      .eq("status", "pending")
-      .eq("payment_type", "order")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const historyRows: TransactionRow[] = [];
+    const pageSize = 500;
 
-    if (error) {
-      // Fallback to transactions domain table
-      const { data: transactions, error: transError } = await supabase
+    for (let from = 0; ; from += pageSize) {
+      const { data, error: historyError } = await supabase
         .from("transactions")
         .select(`
           id,
           order_reference,
-          status,
           total_amount,
           transaction_date,
           membership_cards (
@@ -43,206 +95,134 @@ export async function GET() {
             start_date,
             end_date,
             status,
-            courts (
-              id,
-              name
-            )
+            courts (id, name)
           ),
           equipment_rentals (
             id,
             quantity,
             unit_price,
+            start_date,
+            end_date,
             status,
-            equipments (
-              id,
-              name
-            )
+            equipments (id, name)
           )
         `)
-        .eq("status", "Pending")
         .order("transaction_date", { ascending: false })
-        .limit(100);
+        .range(from, from + pageSize - 1);
 
-      if (transError) throw transError;
+      if (historyError) throw historyError;
 
-      const userIds = Array.from(
-        new Set(
-          (transactions ?? [])
-            .map((t) => (t.membership_cards as unknown as { user_id: string })?.user_id)
-            .filter(Boolean)
-        )
-      );
-
-      const emailMap = new Map<string, string>();
-      if (userIds.length > 0) {
-        const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        for (const u of usersData?.users || []) {
-          if (u.email) emailMap.set(u.id, u.email);
-        }
-      }
-
-      const bookings = (transactions ?? []).flatMap((trans) => {
-        const cardInfo = trans.membership_cards as unknown as { card_number: string; user_id: string } | null;
-        const userEmail = cardInfo?.user_id ? emailMap.get(cardInfo.user_id) || "member@pckl.ph" : "member@pckl.ph";
-        const reservations = (trans.court_reservations as unknown as Array<{
-          id: string;
-          amount: number;
-          start_date: string;
-          end_date: string;
-          courts: { id: string; name: string };
-        }>) || [];
-        const rentals = (trans.equipment_rentals as unknown as Array<{
-          id: string;
-          quantity: number;
-          unit_price: number;
-          equipments: { id: string; name: string };
-        }>) || [];
-
-        const items = [];
-        let idx = 0;
-        for (const r of reservations) {
-          items.push({
-            paymentId: trans.id,
-            orderReference: trans.order_reference,
-            customerName: "PCKL Member",
-            customerEmail: userEmail,
-            amount: Number(trans.total_amount),
-            itemIndex: idx++,
-            item: {
-              id: r.courts?.id || r.id,
-              inventoryId: r.courts?.id,
-              type: "court" as const,
-              name: r.courts?.name || "Court",
-              date: r.start_date?.split("T")[0],
-              startTime: r.start_date ? new Date(r.start_date).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
-              endTime: r.end_date ? new Date(r.end_date).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
-              durationHours: 1,
-              quantity: 1,
-              unitPrice: Number(r.amount),
-            },
-          });
-        }
-        for (const er of rentals) {
-          items.push({
-            paymentId: trans.id,
-            orderReference: trans.order_reference,
-            customerName: "PCKL Member",
-            customerEmail: userEmail,
-            amount: Number(trans.total_amount),
-            itemIndex: idx++,
-            item: {
-              id: er.equipments?.id || er.id,
-              inventoryId: er.equipments?.id,
-              type: "equipment" as const,
-              name: er.equipments?.name || "Equipment",
-              durationHours: 1,
-              quantity: er.quantity,
-              unitPrice: Number(er.unit_price),
-            },
-          });
-        }
-        return items;
-      });
-
-      return Response.json(
-        { bookings },
-        { headers: { "Cache-Control": "no-store" } }
-      );
+      const pageRows = (data ?? []) as unknown as TransactionRow[];
+      historyRows.push(...pageRows);
+      if (pageRows.length < pageSize) break;
     }
 
-    const bookings = (payments ?? []).flatMap((payment) => {
-      const cart = readPaymentCart(payment.cart);
-      if (!cart) {
-        throw new Error(`Pending order ${payment.id} has an invalid cart.`);
-      }
+    const userIds = Array.from(
+      new Set(
+        historyRows
+          .map((row) => row.membership_cards?.user_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
 
-      return cart.map((item, itemIndex) => ({
-        paymentId: payment.id,
-        orderReference: payment.order_reference,
-        customerName: payment.customer_name,
-        customerEmail: payment.customer_email,
-        amount: Number(payment.amount),
-        itemIndex,
-        item,
-      }));
+    const emailMap = new Map<string, string>();
+    const nameMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      for (const u of usersData?.users || []) {
+        if (u.email) emailMap.set(u.id, u.email);
+        const fullName =
+          typeof u.user_metadata?.full_name === "string"
+            ? u.user_metadata.full_name.trim()
+            : "";
+        if (fullName) nameMap.set(u.id, fullName);
+      }
+    }
+
+    const bookings: AdminBookingRecord[] = historyRows.flatMap((transaction) => {
+      const userId = transaction.membership_cards?.user_id ?? "";
+      const cardNumber = transaction.membership_cards?.card_number;
+      const customerEmail =
+        (userId && emailMap.get(userId)) ||
+        (cardNumber ? `Card ${cardNumber}` : "Card ID unavailable");
+      const customerName =
+        (userId && nameMap.get(userId)) || "PCKL Member";
+
+      const baseRecord = {
+        paymentId: transaction.id,
+        orderReference: transaction.order_reference ?? transaction.id,
+        customerName,
+        customerEmail,
+      };
+      let itemIndex = 0;
+
+      const courtRecords = (transaction.court_reservations ?? []).map(
+        (reservation): AdminBookingRecord => {
+          const durationHours = getBookingDuration(
+            reservation.start_date,
+            reservation.end_date
+          );
+          return {
+            ...baseRecord,
+            itemIndex: itemIndex++,
+            status: reservation.status ?? "Active",
+            historyAt: reservation.start_date,
+            item: {
+              id: reservation.courts?.id ?? reservation.id,
+              type: "court",
+              name: reservation.courts?.name ?? "Court",
+              date: formatBookingDate(reservation.start_date),
+              startTime: formatBookingTime(reservation.start_date),
+              endTime: formatBookingTime(reservation.end_date),
+              durationHours,
+              quantity: 1,
+              unitPrice: Number(reservation.amount) / durationHours,
+            },
+          };
+        }
+      );
+
+      const equipmentRecords = (transaction.equipment_rentals ?? []).map(
+        (rental): AdminBookingRecord => {
+          const durationHours = getBookingDuration(
+            rental.start_date,
+            rental.end_date
+          );
+          return {
+            ...baseRecord,
+            itemIndex: itemIndex++,
+            status: rental.status ?? "Active",
+            historyAt: rental.start_date,
+            item: {
+              id: rental.equipments?.id ?? rental.id,
+              type: "equipment",
+              name: rental.equipments?.name ?? "Equipment",
+              date: formatBookingDate(rental.start_date),
+              startTime: formatBookingTime(rental.start_date),
+              endTime: formatBookingTime(rental.end_date),
+              durationHours,
+              quantity: rental.quantity,
+              unitPrice: Number(rental.unit_price),
+            },
+          };
+        }
+      );
+
+      return [...courtRecords, ...equipmentRecords];
     });
+
+    bookings.sort(
+      (left, right) => Date.parse(right.historyAt) - Date.parse(left.historyAt)
+    );
 
     return Response.json(
       { bookings },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
-    console.error("Pending bookings could not be loaded:", error);
+    console.error("Booking history could not be loaded:", error);
     return Response.json(
-      { message: "Pending bookings could not be loaded." },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const authorization = await requireAdmin();
-    if (!authorization.user) return authorization.response;
-
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return Response.json({ message: "Invalid request body." }, { status: 400 });
-    }
-
-    if (!body || typeof body !== "object") {
-      return Response.json({ message: "Invalid booking details." }, { status: 400 });
-    }
-
-    const input = body as Record<string, unknown>;
-    if (
-      typeof input.paymentId !== "string" ||
-      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(input.paymentId)
-    ) {
-      return Response.json({ message: "Choose a valid pending order." }, { status: 400 });
-    }
-
-    const item = await normalizeBookingItem(input.item);
-    if (!item) {
-      return Response.json({ message: "Enter valid booking details." }, { status: 400 });
-    }
-
-    const { order, reason } = await getPendingOrder(input.paymentId);
-    if (!order) {
-      if (reason === "not-found") {
-        return Response.json({ message: "Order not found." }, { status: 404 });
-      }
-      if (reason === "not-editable") {
-        return Response.json(
-          { message: "Only pending customer orders can be changed." },
-          { status: 409 }
-        );
-      }
-      return Response.json({ message: "The order cart is invalid." }, { status: 409 });
-    }
-
-    if (order.cart.length >= 20) {
-      return Response.json(
-        { message: "An order cannot contain more than 20 booking items." },
-        { status: 409 }
-      );
-    }
-
-    const updated = await savePendingOrderCart(order, [...order.cart, item]);
-    if (!updated) {
-      return Response.json(
-        { message: "The order changed or payment review started. Refresh and try again." },
-        { status: 409 }
-      );
-    }
-
-    return Response.json({ message: "Booking added to the pending order." });
-  } catch (error) {
-    console.error("Booking could not be created:", error);
-    return Response.json(
-      { message: "The booking could not be created." },
+      { message: "Booking history could not be loaded." },
       { status: 500 }
     );
   }

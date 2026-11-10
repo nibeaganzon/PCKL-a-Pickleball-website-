@@ -138,6 +138,15 @@ img {
   gap: 22px;
 }
 
+.header-greeting {
+  max-width: 240px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  opacity: 0.9;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .login-link {
   color: var(--navy);
   font-size: 13px;
@@ -1196,6 +1205,11 @@ img {
     gap: 13px;
   }
 
+  .header-greeting {
+    max-width: 150px;
+    font-size: 12px;
+  }
+
   .login-link {
     font-size: 12px;
   }
@@ -1431,6 +1445,11 @@ img {
 @media (max-width: 380px) {
   .header-actions {
     gap: 8px;
+  }
+
+  .header-greeting {
+    max-width: 112px;
+    font-size: 11px;
   }
 
   .login-link {

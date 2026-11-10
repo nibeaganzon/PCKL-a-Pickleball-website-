@@ -36,9 +36,13 @@ const services = [
 ];
 
 export default function HomePage() {
-  const { user, card, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
   const { courts, loading, error } = useInventory();
   const featuredCourts = courts.slice(0, 3);
+  const cardholderName =
+    typeof user?.user_metadata.full_name === "string"
+      ? user.user_metadata.full_name.trim()
+      : "";
 
   return (
     <main>
@@ -64,8 +68,10 @@ export default function HomePage() {
           )}
           {user ? (
             <>
-              <span style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                {card?.card_number || user.email}
+              <span className="header-greeting">
+                {isAdmin
+                  ? "Hi, admin! Welcome!"
+                  : `Hi, ${cardholderName || "there"}! Welcome!`}
               </span>
               <button
                 type="button"

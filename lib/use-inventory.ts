@@ -10,10 +10,6 @@ import type {
 } from "./inventory";
 import { validatePaymentCart } from "./payments";
 
-type InventoryApiCourt = Omit<CourtInventoryItem, "status"> & {
-  status: CourtStatus | "Booked";
-};
-
 export type SaveInventoryDraftInput = {
   id?: string;
   kind: "court" | "equipment";
@@ -59,7 +55,7 @@ export async function reconcileCartWithInventory(): Promise<{
           candidate.id === item.id ||
           candidate.name.toLowerCase() === item.name.toLowerCase()
       );
-      if (!court || court.status !== "Available") {
+      if (!court || court.status === "Maintenance") {
         hasUnavailableItems = true;
         return item;
       }
@@ -116,12 +112,7 @@ export function useInventory() {
       if (!response.ok) {
         throw new Error(result.message || "Inventory could not be loaded.");
       }
-      setCourts(
-        (result.courts as InventoryApiCourt[]).map((court) => ({
-          ...court,
-          status: court.status === "Booked" ? "Maintenance" : court.status,
-        }))
-      );
+      setCourts(result.courts);
       setEquipment(result.equipment);
       setError("");
     } catch (loadError) {

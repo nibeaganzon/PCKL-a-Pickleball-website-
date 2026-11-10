@@ -7,7 +7,7 @@ export type InventoryInput = {
   price: number;
   quantity?: number;
   courtType?: "Indoor" | "Outdoor";
-  status?: "Available" | "Booked" | "Maintenance";
+  status?: "Available" | "Maintenance";
   image: string;
 };
 
@@ -35,7 +35,7 @@ export function parseInventoryInputForRoute(
   if (input.kind === "court") {
     if (
       (input.courtType !== "Indoor" && input.courtType !== "Outdoor") ||
-      !["Available", "Booked", "Maintenance"].includes(String(input.status))
+      !["Available", "Maintenance"].includes(String(input.status))
     ) {
       return null;
     }

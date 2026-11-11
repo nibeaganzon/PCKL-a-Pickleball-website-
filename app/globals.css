@@ -1053,6 +1053,151 @@ img {
   color: #5e6573;
 }
 
+/* MEMBER BOOKINGS */
+
+.home-bookings-section {
+  padding: 70px max(8%, calc((100% - 1100px) / 2));
+  background: #f5f6f8;
+}
+
+.home-bookings-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.home-bookings-heading .section-kicker {
+  margin: 0 0 9px;
+  color: #829500;
+}
+
+.home-bookings-heading h2 {
+  margin: 0;
+  color: var(--navy);
+  font-family: var(--font-heading);
+  font-size: clamp(26px, 3vw, 36px);
+  letter-spacing: -1.5px;
+}
+
+.home-bookings-heading h2 span {
+  color: #829500;
+}
+
+.home-bookings-heading p:last-child {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.home-bookings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+
+.home-booking-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--white);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-booking-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgb(31 56 115 / 9%);
+}
+
+.home-booking-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 13px;
+  color: #227544;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.home-booking-check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f7ed;
+  font-size: 12px;
+}
+
+.home-booking-arrow {
+  margin-left: auto;
+  color: var(--navy);
+  font-size: 17px;
+}
+
+.home-booking-detail {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.home-booking-image {
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  background: #f0f2f5;
+  object-fit: cover;
+}
+
+.home-booking-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.home-booking-detail strong {
+  color: var(--navy);
+  font-family: var(--font-heading);
+  font-size: 15px;
+}
+
+.home-booking-detail span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.home-booking-link-label {
+  margin-top: auto;
+  padding-top: 13px;
+  color: var(--navy);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.home-bookings-message,
+.home-bookings-error {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.home-bookings-error {
+  color: #ae3441;
+}
+
 .membership-visual {
   display: flex;
   flex-direction: column;
@@ -1308,6 +1453,11 @@ img {
     padding-left: 6%;
   }
 
+  .home-bookings-section {
+    padding-right: 6%;
+    padding-left: 6%;
+  }
+
   .site-footer {
     flex-wrap: wrap;
   }
@@ -1545,6 +1695,11 @@ img {
     grid-template-columns: 1fr;
     gap: 35px;
     padding: 65px 6%;
+  }
+
+  .home-bookings-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .membership-copy h2 {

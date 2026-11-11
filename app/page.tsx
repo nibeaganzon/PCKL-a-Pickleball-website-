@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useMembershipBalance } from "@/lib/use-membership-balance";
 import { useInventory } from "@/lib/use-inventory";
 import { useTopUps } from "@/lib/use-top-ups";
+import { useBookings } from "@/lib/use-bookings";
 
 const services = [
   {
@@ -40,6 +41,7 @@ const services = [
 export default function HomePage() {
   const { user, card, isAdmin, signOut } = useAuth();
   const { courts, loading, error } = useInventory();
+  const bookings = useBookings(user && card ? card.id : undefined);
   const cardId = card?.card_number || card?.id || "";
   const {
     balance: currentBalance,
@@ -289,6 +291,110 @@ export default function HomePage() {
           <span aria-hidden="true">⌖</span> GENERAL SANTOS CITY
         </div>
       </section>
+
+      {user && card && (
+        <section className="home-bookings-section" aria-labelledby="home-bookings-title">
+          <div className="home-bookings-heading">
+            <div>
+              <p className="section-kicker">YOUR PCKL+ ACCOUNT</p>
+              <h2 id="home-bookings-title">Your bookings &amp; rentals<span>.</span></h2>
+              <p>View the court times and equipment you have booked with your account.</p>
+            </div>
+            <Link href="/courts" className="text-link">
+              Book another court <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+
+          {bookings.loading ? (
+            <p className="home-bookings-message" role="status">Loading your bookings...</p>
+          ) : bookings.error ? (
+            <p className="home-bookings-error" role="alert">{bookings.error}</p>
+          ) : bookings.orders.length === 0 ? (
+            <p className="home-bookings-message">
+              You don&apos;t have any active court bookings or equipment rentals yet.
+            </p>
+          ) : (
+            <div className="home-bookings-grid">
+              {bookings.orders.map((order) => (
+                <Link
+                  className="home-booking-card"
+                  href={`/payment/confirmation?reference=${encodeURIComponent(order.orderReference)}`}
+                  key={order.id}
+                >
+                  <div className="home-booking-card-heading">
+                    <span className="home-booking-check" aria-hidden="true">✓</span>
+                    <span>CONFIRMED</span>
+                    <span className="home-booking-arrow" aria-hidden="true">↗</span>
+                  </div>
+                  {order.reservations.map((reservation) => (
+                    <div className="home-booking-detail" key={reservation.id}>
+                      {reservation.image && (
+                        <img
+                          className="home-booking-image"
+                          src={reservation.image}
+                          alt={`${reservation.courtName} court`}
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="home-booking-copy">
+                        <strong>{reservation.courtName}</strong>
+                        <span>
+                          {new Intl.DateTimeFormat("en-PH", {
+                            timeZone: "Asia/Manila",
+                            weekday: "short",
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          }).format(new Date(reservation.startDate))}
+                        </span>
+                        <span>
+                          {new Intl.DateTimeFormat("en-PH", {
+                            timeZone: "Asia/Manila",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          }).format(new Date(reservation.startDate))}
+                          {" – "}
+                          {new Intl.DateTimeFormat("en-PH", {
+                            timeZone: "Asia/Manila",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          }).format(new Date(reservation.endDate))}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {order.rentals.map((rental) => (
+                    <div className="home-booking-detail" key={rental.id}>
+                      {rental.image && (
+                        <img
+                          className="home-booking-image"
+                          src={rental.image}
+                          alt={rental.equipmentName}
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="home-booking-copy">
+                        <strong>{rental.equipmentName}</strong>
+                        <span>
+                          Equipment rental · Qty {rental.quantity}
+                        </span>
+                        <span>
+                          {new Intl.DateTimeFormat("en-PH", {
+                            timeZone: "Asia/Manila",
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }).format(new Date(rental.startDate))}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <span className="home-booking-link-label">View booking details</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="section courts-section" id="courts">
         <div className="section-heading">

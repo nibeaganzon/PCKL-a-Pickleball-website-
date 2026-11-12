@@ -4,12 +4,16 @@ Pickleball court booking, equipment rental, and membership management system for
 
 ## Language
 
+**Member**:
+An authenticated user who registers with a cardholder name, email, and password and is issued an active membership card.
+_Avoid_: Customer, player, client, account holder
+
 **Membership Card**:
 A digital stored-value card automatically issued to every registered user with a 16-character identifier, used exclusively by its owner to pay for court bookings and equipment rentals.
 _Avoid_: Wallet, payment profile, credit account
 
 **Card Number**:
-A human-readable identifier prefixed with PCKL followed by 16 alphanumeric characters.
+A human-readable identifier prefixed with PICKL- followed by 16 alphanumeric characters.
 _Avoid_: Card ID, account number
 
 **Active Card**:

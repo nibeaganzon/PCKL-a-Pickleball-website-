@@ -10,9 +10,17 @@ export type MembershipCardSummary = {
 };
 
 export async function signInMember(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error("Enter a valid email address.");
+  }
+  if (!password) {
+    throw new Error("Enter your password.");
+  }
+
   const supabase = createSupabaseBrowserClient();
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: normalizedEmail,
     password,
   });
   if (error) throw error;
@@ -37,13 +45,26 @@ export async function registerMember(input: {
   email: string;
   password: string;
 }): Promise<{ cardNumber: string }> {
+  const trimmedName = input.name.trim();
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  if (trimmedName.length < 2 || trimmedName.length > 100) {
+    throw new Error("Cardholder name must be between 2 and 100 characters.");
+  }
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error("Enter a valid email address.");
+  }
+  if (!input.password || input.password.length < 6) {
+    throw new Error("Password must be at least 6 characters.");
+  }
+
   const supabase = createSupabaseBrowserClient();
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email: input.email.trim().toLowerCase(),
+    email: normalizedEmail,
     password: input.password,
     options: {
       data: {
-        full_name: input.name.trim(),
+        full_name: trimmedName,
       },
     },
   });
